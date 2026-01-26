@@ -36,10 +36,30 @@ python capes_metrics.py --conferencias
 
 ### Apenas revistas (coleta H5-index + template Scopus)
 ```bash
+# Apenas H5-index
 python capes_metrics.py --revistas
+
+# H5-index + JIF do Web of Science
+python capes_metrics.py --revistas --wos
 ```
 
 ## Configuração
+
+### Web of Science (Opcional)
+
+Para habilitar coleta automática de JIF:
+
+1. Obtenha chave API gratuita em: https://developer.clarivate.com/portal
+2. Crie arquivo `.env` na raiz do projeto:
+   ```bash
+   WOS_API_KEY=sua_chave_api_aqui
+   ```
+3. Execute com flag `--wos`:
+   ```bash
+   python capes_metrics.py --revistas --wos
+   ```
+
+**Nota**: Free tier permite 5000 requisições/mês.
 
 ### Adicionar conferências
 
@@ -65,6 +85,7 @@ NATURE,Nature,0028-0836
 |------|-------|---------|------------|
 | Conferências | Google Scholar Metrics | H5-index | ✅ Sim |
 | Revistas | Google Scholar Metrics | H5-index | ✅ Sim |
+| Revistas | Web of Science API | JIF + Percentil | ✅ Opcional (--wos) |
 | Revistas | Scopus Preview | CiteScore + Percentil | ⚠️ Manual |
 
 ### Para revistas (workflow híbrido)
@@ -72,7 +93,9 @@ NATURE,Nature,0028-0836
 **Automático** (executado pelo script):
 1. Coleta H5-index do Google Scholar Metrics
 2. Calcula estrato inicial baseado em H5 (`estrato_h5`)
-3. Gera arquivo CSV com dados parciais
+3. [Opcional com --wos] Coleta JIF do Web of Science Starter API
+4. Calcula `estrato_jif` e `estrato_final` (melhor métrica)
+5. Gera arquivo CSV com dados parciais
 
 **Manual** (usuário deve fazer):
 1. Abrir arquivo CSV gerado em `output/revistas_TIMESTAMP.csv`
@@ -80,7 +103,7 @@ NATURE,Nature,0028-0836
 3. Buscar pelo nome ou ISSN de cada revista
 4. Anotar: **CiteScore**, **Percentile** e **Subject Area**
 5. Preencher as colunas vazias: `citescore`, `percentil`, `area_tematica`, `url_scopus`
-6. Comparar `estrato_h5` com `estrato_percentil` (após cálculo) e usar o melhor
+6. Comparar `estrato_final` com `estrato_percentil` e usar o melhor
 
 ## Cálculo do Estrato CAPES
 
@@ -124,8 +147,15 @@ NATURE,Nature,0028-0836
 
 - **Google Scholar Metrics**: Pode bloquear após muitas requisições (CAPTCHA)
 - **Scopus Preview**: Requer JavaScript, não permite scraping direto
+- **Web of Science**: Free tier limitado a 5000 req/mês (erro 429 se excedido)
 - **Rankings SBC**: Não incluídos automaticamente (ajuste manual necessário)
 - **Matching**: Primeira correspondência do Google Scholar pode não ser exata - validar coluna `nome_gsm`
+
+## Segurança
+
+- **Credenciais**: Armazene `WOS_API_KEY` em arquivo `.env` (não versionado)
+- **API Keys**: Nunca commite `.env` no git (.gitignore já configurado)
+- **Logs**: API keys são mascaradas automaticamente nos logs
 
 ## Exemplo de Saída
 
@@ -144,13 +174,15 @@ IJCNN      International Joint Conference on Neu       47       A1
 
 ### Revistas
 ```
-REVISTAS - Métricas Google Scholar (H5) + Scopus (CiteScore/Percentil)
-===============================================================================================
-Sigla    Nome                           H5     E-H5  CiteScore  Percentil  E-Pct
--------- ------------------------------ ------ ----- ---------- ---------- ------
-TGRS     IEEE Transactions on Geos...     85    A1        N/A        N/A    N/A
-SPE      SPE Journal                      42    A1        N/A        N/A    N/A
-GRSL     IEEE Geoscience and Remo...      58    A1        N/A        N/A    N/A
+REVISTAS - Métricas: Google Scholar (H5) + Scopus (CiteScore) + WoS (JIF)
+========================================================================================================================
+Sigla    Nome                      H5     E-H5  CS     E-CS  JIF    E-JIF  Final
+-------- ------------------------- ------ ----- ------ ----- ------ ------ ------
+TGRS     IEEE Transactions on ...     85    A1   95.2%   A1   92.3%    A1    A1
+SPE      SPE Journal                  42    A1   80.5%   A2   N/A     N/A    A1
+GRSL     IEEE Geoscience and...      58    A1   N/A    N/A   88.1%    A1    A1
 ```
 
-**Nota**: As colunas `CiteScore`, `Percentil` e `E-Pct` (estrato baseado em percentil) devem ser preenchidas manualmente consultando o Scopus.
+**Legenda**: E-H5 (estrato H5), E-CS (estrato CiteScore), E-JIF (estrato JIF), Final (melhor estrato)
+
+**Nota**: As colunas `CiteScore` e `Percentil` devem ser preenchidas manualmente consultando o Scopus. A coluna `JIF` é preenchida automaticamente se usar `--wos`. Estrato Final mostra a melhor classificação entre H5, CiteScore e JIF.

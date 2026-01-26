@@ -27,11 +27,13 @@ import json
 import time
 import random
 import argparse
+import os
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, asdict
 from typing import Optional, List, Dict
 from urllib.parse import quote_plus
+from dotenv import load_dotenv
 
 # =============================================================================
 # CONFIGURAÇÕES
@@ -82,8 +84,14 @@ class RevistaMetrics:
     percentil: Optional[float] = None
     area_tematica: Optional[str] = None
     estrato_percentil: Optional[str] = None
+    jif: Optional[float] = None
+    jif_percentil: Optional[float] = None
+    categoria_wos: Optional[str] = None
+    estrato_jif: Optional[str] = None
+    estrato_final: Optional[str] = None
     url_gsm: Optional[str] = None
     url_scopus: Optional[str] = None
+    url_wos: Optional[str] = None
     erro: Optional[str] = None
     data_coleta: Optional[str] = None
 
@@ -151,6 +159,66 @@ def calcular_estrato_revista(percentil: Optional[float]) -> str:
         return "A7"
     else:
         return "A8"
+
+
+def calcular_estrato_final(
+    estrato_h5: Optional[str],
+    estrato_percentil: Optional[str],
+    estrato_jif: Optional[str],
+) -> str:
+    """
+    Calcula o estrato final de uma revista usando a MELHOR métrica disponível.
+
+    Regra CAPES: Considerar o maior percentil entre CiteScore e JIF.
+    Para implementação: A1 > A2 > ... > A8 (menor valor = melhor estrato).
+
+    Args:
+        estrato_h5: Estrato baseado em H5-index (ex: "A1", "A2", "N/A")
+        estrato_percentil: Estrato baseado em CiteScore percentil
+        estrato_jif: Estrato baseado em JIF percentil
+
+    Returns:
+        Melhor estrato entre as três métricas, ou "N/A" se nenhuma disponível
+
+    Examples:
+        >>> calcular_estrato_final("A2", "A1", "A3")
+        "A1"
+        >>> calcular_estrato_final("A5", None, None)
+        "A5"
+        >>> calcular_estrato_final(None, None, None)
+        "N/A"
+    """
+    # Mapear estratos para valores numéricos (menor = melhor)
+    estrato_map = {
+        "A1": 1,
+        "A2": 2,
+        "A3": 3,
+        "A4": 4,
+        "A5": 5,
+        "A6": 6,
+        "A7": 7,
+        "A8": 8,
+        "N/A": 999,
+        "N/C": 999,
+        None: 999,
+    }
+
+    # Converter estratos para números
+    valores = [
+        (estrato_h5, estrato_map.get(estrato_h5, 999)),
+        (estrato_percentil, estrato_map.get(estrato_percentil, 999)),
+        (estrato_jif, estrato_map.get(estrato_jif, 999)),
+    ]
+
+    # Filtrar valores válidos e pegar o melhor (menor número)
+    valores_validos = [(e, v) for e, v in valores if v < 999]
+
+    if not valores_validos:
+        return "N/A"
+
+    # Retorna o estrato com menor valor numérico (melhor)
+    melhor_estrato, _ = min(valores_validos, key=lambda x: x[1])
+    return melhor_estrato
 
 
 # =============================================================================
@@ -364,6 +432,205 @@ class GoogleScholarMetricsScraper:
 
 
 # =============================================================================
+# WEB OF SCIENCE STARTER API CLIENT
+# =============================================================================
+
+
+class WebOfScienceAPIClient:
+    """
+    Cliente para Web of Science Starter API.
+
+    Coleta Journal Impact Factor (JIF) e percentil de categorias.
+    API Gratuita: 5000 requisições/mês
+    Documentação: https://developer.clarivate.com/apis/wos-starter
+
+    Attributes:
+        api_key: Chave de API WoS
+        base_url: URL base da API
+        session: Sessão HTTP reutilizável
+    """
+
+    BASE_URL = "https://api.clarivate.com/api/wos-starter"
+
+    def __init__(self, api_key: str, timeout: int = 30):
+        """
+        Inicializa o cliente WoS API.
+
+        Args:
+            api_key: Chave de API obtida em developer.clarivate.com
+            timeout: Timeout em segundos para requisições (padrão: 30s)
+
+        Raises:
+            ValueError: Se api_key estiver vazio
+        """
+        if not api_key or not api_key.strip():
+            raise ValueError("WoS API key não pode estar vazia")
+
+        self.api_key = api_key
+        self.timeout = timeout
+        self.session = requests.Session()
+        self.session.headers.update(
+            {
+                "X-ApiKey": self.api_key,
+                "Accept": "application/json",
+                "User-Agent": "CAPES-Metrics-Collector/1.2",
+            }
+        )
+
+    def _delay(self):
+        """
+        Implementa rate limiting para respeitar limites da API.
+
+        Free tier: 5000 req/mês ≈ 6.9 req/hora se usado uniformemente.
+        Delay conservador para evitar rate limit 429.
+        """
+        delay = random.uniform(DELAY_MIN, DELAY_MAX)
+        print(f"    ⏳ Aguardando {delay:.1f}s...")
+        time.sleep(delay)
+
+    def _mask_api_key(self, key: str) -> str:
+        """
+        Mascara chave API para logs (mostra apenas últimos 4 caracteres).
+
+        Args:
+            key: Chave API completa
+
+        Returns:
+            Chave mascarada (ex: "****abc123")
+        """
+        if len(key) <= 8:
+            return "****"
+        return "*" * (len(key) - 4) + key[-4:]
+
+    def buscar_revista_wos(self, issn: Optional[str], nome: str) -> tuple:
+        """
+        Busca métricas de revista no Web of Science.
+
+        Ordem de busca:
+        1. Por ISSN (mais preciso)
+        2. Por nome (fallback se ISSN não fornecido)
+
+        Args:
+            issn: ISSN da revista (formato: XXXX-XXXX)
+            nome: Nome completo da revista (usado se ISSN ausente)
+
+        Returns:
+            Tupla (jif, jif_percentil, categoria_wos, url_wos, erro)
+            onde:
+                jif: Journal Impact Factor (float)
+                jif_percentil: Percentil na categoria (0-100)
+                categoria_wos: Nome da categoria WoS
+                url_wos: URL da fonte no WoS
+                erro: Mensagem de erro (None se sucesso)
+
+        Examples:
+            >>> client = WebOfScienceAPIClient("abc123")
+            >>> jif, pct, cat, url, err = client.buscar_revista_wos(
+            ...     "0028-0836", "Nature"
+            ... )
+        """
+        try:
+            self._delay()
+
+            # Monta query (prioriza ISSN)
+            if issn and issn.strip():
+                query_param = issn.strip()
+                search_type = "issn"
+            else:
+                query_param = nome
+                search_type = "title"
+
+            # Endpoint: /journals
+            url = f"{self.BASE_URL}/journals"
+            params = {"q": query_param, "limit": 1}  # Pega apenas primeiro resultado
+
+            response = self.session.get(url, params=params, timeout=self.timeout)
+
+            # Tratamento de erros HTTP
+            if response.status_code == 401:
+                masked = self._mask_api_key(self.api_key)
+                return (
+                    None,
+                    None,
+                    None,
+                    None,
+                    f"Autenticação falhou (chave: {masked}). Verifique WOS_API_KEY",
+                )
+            elif response.status_code == 429:
+                return (
+                    None,
+                    None,
+                    None,
+                    None,
+                    "Rate limit excedido (5000 req/mês). Aguarde reset mensal",
+                )
+            elif response.status_code == 404:
+                return (
+                    None,
+                    None,
+                    None,
+                    None,
+                    f"Revista não encontrada no WoS ({search_type}: {query_param})",
+                )
+
+            response.raise_for_status()
+
+            # Parse JSON response
+            data = response.json()
+
+            # Estrutura esperada: {"data": [{"id": "...", "metrics": {...}}]}
+            if not data.get("data") or len(data["data"]) == 0:
+                return (
+                    None,
+                    None,
+                    None,
+                    None,
+                    f"Nenhum resultado no WoS para {search_type}: {query_param}",
+                )
+
+            journal = data["data"][0]
+            metrics = journal.get("metrics", {})
+
+            # Extrai métricas
+            jif = metrics.get("jif")  # Journal Impact Factor
+            jif_percentil = metrics.get("jif_percentile")
+            categoria_wos = metrics.get("category")  # Categoria principal
+            journal_id = journal.get("id")
+
+            # Monta URL do WoS
+            url_wos = None
+            if journal_id:
+                url_wos = f"https://jcr.clarivate.com/jcr/journal-profile?journal={journal_id}"
+
+            # Validação básica
+            if jif is None and jif_percentil is None:
+                return (
+                    None,
+                    None,
+                    categoria_wos,
+                    url_wos,
+                    "Revista encontrada mas sem métricas JIF disponíveis",
+                )
+
+            return (jif, jif_percentil, categoria_wos, url_wos, None)
+
+        except requests.Timeout:
+            return (
+                None,
+                None,
+                None,
+                None,
+                f"Timeout após {self.timeout}s ao consultar WoS API",
+            )
+        except requests.RequestException as e:
+            return (None, None, None, None, f"Erro de conexão WoS API: {str(e)}")
+        except (KeyError, ValueError, TypeError) as e:
+            return (None, None, None, None, f"Erro ao parsear resposta WoS: {str(e)}")
+        except Exception as e:
+            return (None, None, None, None, f"Erro inesperado WoS: {str(e)}")
+
+
+# =============================================================================
 # SAÍDA DE RESULTADOS
 # =============================================================================
 
@@ -411,27 +678,47 @@ def imprimir_tabela_conferencias(resultados: List[ConferenciaMetrics]):
 
 def imprimir_tabela_revistas(resultados: List[RevistaMetrics]):
     """Imprime resultados de revistas em tabela."""
-    print(f"\n{'=' * 95}")
-    print(" REVISTAS - Métricas Google Scholar (H5) + Scopus (CiteScore/Percentil)")
-    print(f"{'=' * 95}")
+    print(f"\n{'=' * 120}")
+    print(" REVISTAS - Métricas: Google Scholar (H5) + Scopus (CiteScore) + WoS (JIF)")
+    print(f"{'=' * 120}")
     print(
-        f"{'Sigla':<8} {'Nome':<30} {'H5':>6} {'E-H5':>5} {'CiteScore':>10} {'Percentil':>10} {'E-Pct':>6}"
+        f"{'Sigla':<8} {'Nome':<25} {'H5':>6} {'E-H5':>5} "
+        f"{'CS':>6} {'E-CS':>5} {'JIF':>6} {'E-JIF':>6} {'Final':>6}"
     )
-    print(f"{'-' * 8} {'-' * 30} {'-' * 6} {'-' * 5} {'-' * 10} {'-' * 10} {'-' * 6}")
+    print(
+        f"{'-' * 8} {'-' * 25} {'-' * 6} {'-' * 5} "
+        f"{'-' * 6} {'-' * 5} {'-' * 6} {'-' * 6} {'-' * 6}"
+    )
 
     for r in resultados:
-        nome = (r.nome_gsm or r.nome_completo or r.sigla)[:30]
+        nome = (r.nome_gsm or r.nome_completo or r.sigla)[:25]
         h5 = str(r.h5_index) if r.h5_index else "N/A"
         estrato_h5 = r.estrato_h5 or "N/A"
-        cs = f"{r.citescore:.1f}" if r.citescore else "N/A"
-        pct = f"{r.percentil:.1f}%" if r.percentil else "N/A"
-        estrato_pct = r.estrato_percentil or "N/A"
+
+        # CiteScore (Scopus)
+        cs = f"{r.percentil:.1f}%" if r.percentil else "N/A"
+        estrato_cs = r.estrato_percentil or "N/A"
+
+        # JIF (Web of Science)
+        jif_display = f"{r.jif_percentil:.1f}%" if r.jif_percentil else "N/A"
+        estrato_jif = r.estrato_jif or "N/A"
+
+        # Final (melhor entre todos)
+        estrato_final = r.estrato_final or "N/A"
+
         erro = " ⚠️" if r.erro else ""
         print(
-            f"{r.sigla:<8} {nome:<30} {h5:>6} {estrato_h5:>5} {cs:>10} {pct:>10} {estrato_pct:>6}{erro}"
+            f"{r.sigla:<8} {nome:<25} {h5:>6} {estrato_h5:>5} "
+            f"{cs:>6} {estrato_cs:>5} {jif_display:>6} {estrato_jif:>6} {estrato_final:>6}{erro}"
         )
 
     print()
+
+    # Add legend
+    print(
+        "Legenda: E-H5 (estrato H5), E-CS (estrato CiteScore), "
+        "E-JIF (estrato JIF), Final (melhor estrato)"
+    )
 
 
 # =============================================================================
@@ -440,6 +727,9 @@ def imprimir_tabela_revistas(resultados: List[RevistaMetrics]):
 
 
 def main():
+    # Load environment variables from .env file
+    load_dotenv()
+
     parser = argparse.ArgumentParser(
         description="Coleta métricas CAPES de periódicos e conferências"
     )
@@ -450,6 +740,11 @@ def main():
         "--revistas",
         action="store_true",
         help="Coleta apenas revistas (H5-index + template Scopus)",
+    )
+    parser.add_argument(
+        "--wos",
+        action="store_true",
+        help="Inclui coleta de JIF do Web of Science (requer WOS_API_KEY em .env)",
     )
     parser.add_argument(
         "--output", type=Path, default=OUTPUT_DIR, help="Diretório de saída"
@@ -467,6 +762,24 @@ def main():
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     coletar_tudo = not args.conferencias and not args.revistas
+
+    # -------------------------------------------------------------------------
+    # WEB OF SCIENCE SETUP (OPTIONAL)
+    # -------------------------------------------------------------------------
+    wos_client = None
+    if args.wos:
+        wos_api_key = os.getenv("WOS_API_KEY")
+        if wos_api_key:
+            try:
+                wos_client = WebOfScienceAPIClient(wos_api_key)
+                print("✅ Web of Science API ativado")
+            except ValueError as e:
+                print(f"⚠️  Erro ao inicializar WoS client: {e}")
+                print("   Continuando sem coleta de JIF...")
+        else:
+            print("⚠️  Flag --wos ativada mas WOS_API_KEY não encontrada em .env")
+            print("   Continuando sem coleta de JIF...")
+            print("   Configure WOS_API_KEY no arquivo .env para habilitar WoS")
 
     # -------------------------------------------------------------------------
     # CONFERÊNCIAS
@@ -528,17 +841,55 @@ def main():
 
             for i, rev in enumerate(revistas, 1):
                 print(f"\n[{i}/{len(revistas)}] {rev['sigla']}")
+
+                # 1. Coleta H5-index (Google Scholar)
                 resultado = scraper.buscar_revista(
                     rev["sigla"], rev["nome_completo"], rev.get("issn")
                 )
-                resultados_rev.append(resultado)
 
                 if resultado.erro:
-                    print(f"    ⚠️  {resultado.erro}")
+                    print(f"    ⚠️  GSM: {resultado.erro}")
                 else:
-                    print(f"    ✓ H5={resultado.h5_index} → {resultado.estrato_h5}")
+                    print(
+                        f"    ✓ GSM: H5={resultado.h5_index} → {resultado.estrato_h5}"
+                    )
 
-            # Salva resultados com H5-index
+                # 2. Coleta JIF (Web of Science) se --wos ativado
+                if wos_client:
+                    print("    🔍 Consultando WoS para JIF...")
+                    jif, jif_pct, cat_wos, url_wos, erro_wos = (
+                        wos_client.buscar_revista_wos(
+                            resultado.issn, resultado.nome_completo
+                        )
+                    )
+
+                    resultado.jif = jif
+                    resultado.jif_percentil = jif_pct
+                    resultado.categoria_wos = cat_wos
+                    resultado.url_wos = url_wos
+                    resultado.estrato_jif = (
+                        calcular_estrato_revista(jif_pct)
+                        if jif_pct is not None
+                        else None
+                    )
+
+                    if erro_wos:
+                        print(f"    ⚠️  WoS: {erro_wos}")
+                    else:
+                        print(
+                            f"    ✓ WoS: JIF={jif} (Pct={jif_pct}%) → {resultado.estrato_jif}"
+                        )
+
+                # 3. Calcula estrato final (melhor entre H5, CiteScore, JIF)
+                resultado.estrato_final = calcular_estrato_final(
+                    resultado.estrato_h5,
+                    resultado.estrato_percentil,
+                    resultado.estrato_jif,
+                )
+
+                resultados_rev.append(resultado)
+
+            # Salva resultados com H5-index e JIF (se disponível)
             salvar_csv(
                 resultados_rev,
                 args.output / f"revistas_{timestamp}.csv",
@@ -554,8 +905,14 @@ def main():
                     "percentil",
                     "area_tematica",
                     "estrato_percentil",
+                    "jif",
+                    "jif_percentil",
+                    "categoria_wos",
+                    "estrato_jif",
+                    "estrato_final",
                     "url_gsm",
                     "url_scopus",
+                    "url_wos",
                     "erro",
                     "data_coleta",
                 ],

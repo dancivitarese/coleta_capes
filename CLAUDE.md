@@ -11,14 +11,15 @@ O projeto foi criado através de uma conversa com Claude.ai para automatizar a c
 ✅ **Conferências**: Coleta H5-index do Google Scholar e calcula estrato inicial (Etapa 1)
 ❌ **Conferências**: Ajuste CE-SBC (Top10/Top20) requer consulta manual à SBC
 ✅ **Periódicos**: Coleta H5-index do Google Scholar e calcula estrato inicial
+✅ **Periódicos**: Coleta JIF do Web of Science (opcional, via API com --wos)
 ⚠️ **Periódicos**: Coleta de CiteScore/Percentil é manual (Scopus requer JavaScript)
 
 ### Lista de Verificação para Uso Completo
 
 - [x] Executar script para coletar H5-index de conferências e revistas
+- [x] (Opcional) Configurar WOS_API_KEY em .env e usar --wos para coletar JIF
 - [ ] Consultar rankings CE-SBC (eventos@sbc.org.br) e aplicar ajustes +1/+2 nas conferências
 - [ ] Acessar Scopus Preview e preencher CSV de revistas com CiteScore/Percentil
-- [ ] (Opcional) Consultar Web of Science para JIF e usar o maior percentil
 - [ ] Validar resultados manualmente (matching pode ser imperfeito)
 
 ## Contexto e Objetivo
@@ -31,7 +32,7 @@ A CAPES utiliza métricas bibliométricas para classificar periódicos e confer�
 - **Periódicos**:
   - H5-index do Google Scholar Metrics (automático)
   - CiteScore (Scopus) - coleta manual via web
-  - JIF (Web of Science) - coleta manual via web (opcional)
+  - JIF (Web of Science) - coleta automática via API (opcional com --wos)
   - **Regra**: Usar o **MAIOR** percentil entre CiteScore e JIF
 
 ### Documentos de Referência CAPES
@@ -322,32 +323,43 @@ Exemplo 3: Workshop Regional
 
 ### Coleta de Periódicos (Semi-automática)
 
-**Coleta Automática (H5-index do Google Scholar)**:
-Similar às conferências, o script coleta automaticamente o H5-index de cada revista do Google Scholar Metrics e calcula o estrato inicial baseado nessa métrica.
+**Coleta Automática**:
+- H5-index do Google Scholar Metrics
+- JIF do Web of Science (se flag --wos ativada e WOS_API_KEY configurada)
 
-**Coleta Manual (CiteScore do Scopus)**:
-O Scopus Preview requer JavaScript para renderizar dados, impossibilitando scraping direto com BeautifulSoup.
+**Coleta Manual**:
+- CiteScore do Scopus Preview (JavaScript requer acesso manual)
 
 **Workflow híbrido**:
 
-1. **Coleta Automática de H5-index**
-   - Carrega [config/revistas.csv](config/revistas.csv)
-   - Busca cada revista no Google Scholar Metrics
-   - Extrai H5-index e H5-median
-   - Calcula estrato baseado em H5-index
-   - Salva resultados em CSV e JSON
+1. **Configurar Web of Science (Opcional)**
+   - Obter API key em: https://developer.clarivate.com/portal
+   - Criar arquivo `.env` na raiz do projeto:
+   ```bash
+   WOS_API_KEY=sua_chave_aqui
+   ```
+   - Free tier: 5000 requisições/mês
 
-2. **Etapa Manual - CiteScore** (usuário)
+2. **Executar Coleta Automática**
+   ```bash
+   # Apenas H5-index
+   python capes_metrics.py --revistas
+
+   # H5-index + JIF (requer .env com WOS_API_KEY)
+   python capes_metrics.py --revistas --wos
+   ```
+
+3. **Etapa Manual - CiteScore** (usuário)
    - Abre o arquivo CSV gerado
    - Acessa https://www.scopus.com/sources
    - Busca cada revista por nome/ISSN
    - Anota CiteScore, Percentil e Subject Area
    - Preenche as colunas vazias no CSV: `citescore`, `percentil`, `area_tematica`, `url_scopus`
 
-3. **Cálculo do Estrato Final**
-   - Compara `estrato_h5` com `estrato_percentil` (após preencher)
-   - Usa o **melhor** estrato entre as duas métricas
-   - (Opcional) Se tiver JIF do Web of Science, compara os três e usa o melhor
+4. **Cálculo do Estrato Final**
+   - Compara `estrato_h5` com `estrato_percentil` (após preencher CiteScore)
+   - Compara com `estrato_wos` (se disponível)
+   - Usa o **melhor** estrato entre as três métricas
 
 **Formato do CSV de Saída**:
 ```csv
@@ -362,6 +374,7 @@ TGRS,IEEE Trans...,0196-2892,IEEE Transactions...,85,105,A1,[PREENCHER],[PREENCH
 ```python
 requests>=2.28.0        # HTTP client
 beautifulsoup4>=4.11.0  # HTML parsing
+python-dotenv>=1.0.0    # Environment variables
 ```
 
 **Bibliotecas padrão**:
@@ -382,12 +395,12 @@ beautifulsoup4>=4.11.0  # HTML parsing
 |-------|----------|---------|--------|
 | Google Scholar Metrics | https://scholar.google.com | H5-index | HTTP GET (HTML) |
 | Scopus Preview | https://www.scopus.com/sources | CiteScore + Percentil | JavaScript (manual) |
+| Web of Science Starter API | https://api.clarivate.com/api/wos-starter | JIF + Percentil | REST API (opcional) |
 | CE-SBC Rankings | eventos@sbc.org.br | Top10/Top20/Relevante | Consulta por email |
 
 #### Fontes Descartadas
 
 - **OpenAlex** (https://openalex.org): Não fornece CiteScore nem JIF oficiais (apenas métricas proprietárias similares, não aceitas pela CAPES)
-- **Web of Science** (JIF): Requer assinatura institucional (não implementado na versão atual)
 
 ## Como Usar
 
@@ -425,14 +438,17 @@ JSS,Journal of Systems and Software,0164-1212
 ### Execução
 
 ```bash
-# Coleta completa
+# Coleta completa (H5-index apenas)
 python capes_metrics.py
 
 # Apenas conferências
 python capes_metrics.py --conferencias
 
-# Apenas periódicos (gera template)
+# Apenas periódicos (H5-index apenas)
 python capes_metrics.py --revistas
+
+# Periódicos com JIF do Web of Science (requer .env com WOS_API_KEY)
+python capes_metrics.py --revistas --wos
 ```
 
 ### Fluxo de Trabalho Recomendado
@@ -463,33 +479,35 @@ python capes_metrics.py --revistas
 #### Para Periódicos
 
 1. **Preparar lista** em [config/revistas.csv](config/revistas.csv) com ISSN
-2. **Executar coleta de H5-index**:
+
+2. **(Opcional) Configurar Web of Science**:
+   - Obter chave em https://developer.clarivate.com/portal
+   - Criar `.env` com `WOS_API_KEY=sua_chave`
+
+3. **Executar coleta automática**:
    ```bash
+   # Apenas H5-index
    python capes_metrics.py --revistas
+
+   # H5-index + JIF
+   python capes_metrics.py --revistas --wos
    ```
-3. **Validar resultados** em `output/revistas_TIMESTAMP.csv`
+
+4. **Validar resultados** em `output/revistas_TIMESTAMP.csv`
    - Verificar se o nome encontrado (coluna `nome_gsm`) corresponde à revista desejada
    - Anotar H5-index e estrato inicial (coluna `estrato_h5`)
+   - Se usou --wos, verificar JIF coletado (coluna `jif`) e estrato WoS (coluna `estrato_wos`)
 
-4. **Coletar CiteScore/Percentil manualmente**:
+5. **Coletar CiteScore/Percentil manualmente**:
    - Abrir o arquivo CSV gerado (`output/revistas_TIMESTAMP.csv`)
    - Acessar https://www.scopus.com/sources
    - Para cada revista, buscar por nome ou ISSN
    - Anotar CiteScore, Percentil e Subject Area
-   - (Opcional) Consultar Web of Science para JIF
-
-5. **Preencher CSV gerado**:
    - Preencher as colunas: `citescore`, `percentil`, `area_tematica`, `url_scopus`
-   - Exemplo:
-   ```csv
-   sigla,...,h5_index,estrato_h5,citescore,percentil,area_tematica,estrato_percentil,...
-   TGRS,...,85,A1,13.7,95.2,Earth Sciences,A1,...
-   ```
 
 6. **Calcular estrato final**:
-   - Comparar `estrato_h5` com `estrato_percentil`
-   - Usar o **melhor** estrato entre as duas métricas
-   - Se tiver JIF, comparar os três e usar o melhor
+   - Comparar `estrato_h5`, `estrato_percentil` e `estrato_wos` (se disponível)
+   - Usar o **melhor** estrato entre as três métricas
 
 7. **Validar** contra documentos CAPES
 
@@ -566,27 +584,32 @@ TGRS,IEEE Transactions on Geoscience and Remote Sensing,0196-2892,IEEE Transacti
    - Coleta manual necessária
    - Alternativas futuras: Selenium/Playwright, API oficial (paga)
 
-4. **Sem Histórico de Métricas**
+4. **WoS API Free Tier**
+   - Limite: 5000 requisições/mês
+   - Erro 429 se excedido
+   - Solução: Aguardar reset mensal ou adquirir plano pago
+
+5. **Segurança de Credenciais**
+   - API keys armazenadas em .env (não versionado)
+   - Máscaramento em logs (mostra apenas últimos 4 caracteres)
+   - Nunca commitar .env no git
+
+6. **Sem Histórico de Métricas**
    - Coleta snapshot do momento atual
    - Não rastreia mudanças temporais
    - Google Scholar atualiza anualmente
 
 ### Documentação CAPES
 
-5. **Ajustes CE-SBC**
+7. **Ajustes CE-SBC**
    - Rankings Top10/Top20/Relevante não incluídos automaticamente
    - Requer consulta por email: eventos@sbc.org.br
    - Ajuste manual do estrato final (+1 ou +2 níveis)
    - Critério de tradição SBC (10+/20+ anos) também manual
 
-6. **Critérios Qualitativos**
+8. **Critérios Qualitativos**
    - Sistema não considera critérios subjetivos
    - Avaliação humana ainda necessária
-
-7. **Web of Science (JIF)**
-   - Métrica JIF não coletada (requer assinatura institucional)
-   - Percentil JIF pode ser maior que CiteScore em alguns casos
-   - Coleta manual necessária se disponível
 
 ## Detalhes Técnicos
 
@@ -680,6 +703,30 @@ elif percentil >= 75.0: return "A2"
 
 ## Histórico de Desenvolvimento
 
+### Versão 1.2 (2026-01-26)
+
+**Atualização**: Integração com Web of Science Starter API
+
+#### Melhorias Implementadas
+
+- ✅ Coleta automática de JIF via WoS Starter API (opcional com --wos)
+- ✅ Suporte a variáveis de ambiente via python-dotenv (.env)
+- ✅ Função `calcular_estrato_final()` para determinar melhor métrica
+- ✅ Campos WoS adicionados ao dataclass `RevistaMetrics`
+- ✅ Máscaramento de API keys em logs (segurança)
+- ✅ Tratamento de erros 401, 429, 404 da API WoS
+- ✅ Tabela de resultados expandida com JIF e estrato final
+- ✅ Documentação completa para configuração .env
+
+#### Workflow Atualizado
+
+Antes: H5-index automático + template Scopus manual
+Agora:
+1. H5-index automático (Google Scholar)
+2. JIF automático (WoS API, opcional)
+3. CiteScore manual (Scopus)
+4. Estrato final calculado automaticamente (melhor entre três)
+
 ### Versão 1.1 (2026-01-26)
 
 **Atualização**: Coleta automática de H5-index para revistas
@@ -731,9 +778,10 @@ Criado via Claude.ai com as seguintes funcionalidades:
 
 ### APIs e Serviços
 
+- **Google Scholar Metrics**: https://scholar.google.com/citations?view_op=top_venues
+- **Web of Science Starter API**: https://developer.clarivate.com/portal (free tier: 5000 req/mês)
 - **Scopus API**: https://dev.elsevier.com (requer email institucional para acesso)
 - **Scopus Preview** (gratuito): https://www.scopus.com/sources
-- **Google Scholar Metrics**: https://scholar.google.com/citations?view_op=top_venues
 - **OpenAlex API**: https://docs.openalex.org (não utilizado - métricas não oficiais)
 
 ### Sociedade Brasileira de Computação
