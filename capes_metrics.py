@@ -20,19 +20,20 @@ Configuração:
     config/conferencias.csv - Lista de conferências
 """
 
-import requests
-from bs4 import BeautifulSoup
+import argparse
 import csv
 import json
-import time
-import random
-import argparse
 import os
-from pathlib import Path
+import random
+import time
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass, asdict
-from typing import Optional, List, Dict
+from pathlib import Path
+from typing import Dict, List, Optional
 from urllib.parse import quote_plus
+
+import requests
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 # =============================================================================
@@ -312,10 +313,7 @@ class GoogleScholarMetricsScraper:
             response.raise_for_status()
 
             # Verifica bloqueio (CAPTCHA)
-            if (
-                "unusual traffic" in response.text.lower()
-                or "captcha" in response.text.lower()
-            ):
+            if "unusual traffic" in response.text.lower() or "captcha" in response.text.lower():
                 return (
                     None,
                     None,
@@ -380,9 +378,7 @@ class GoogleScholarMetricsScraper:
         except Exception as e:
             return None, None, None, None, f"Erro: {str(e)}"
 
-    def buscar_conferencia(
-        self, sigla: str, nome_completo: Optional[str] = None
-    ) -> ConferenciaMetrics:
+    def buscar_conferencia(self, sigla: str, nome_completo: Optional[str] = None) -> ConferenciaMetrics:
         """Busca métricas de uma conferência no Google Scholar Metrics."""
 
         resultado = ConferenciaMetrics(
@@ -404,9 +400,7 @@ class GoogleScholarMetricsScraper:
 
         return resultado
 
-    def buscar_revista(
-        self, sigla: str, nome_completo: str, issn: Optional[str] = None
-    ) -> RevistaMetrics:
+    def buscar_revista(self, sigla: str, nome_completo: str, issn: Optional[str] = None) -> RevistaMetrics:
         """Busca métricas de uma revista no Google Scholar Metrics."""
 
         resultado = RevistaMetrics(
@@ -417,9 +411,7 @@ class GoogleScholarMetricsScraper:
         )
 
         # Tenta buscar pelo nome completo
-        nome_gsm, h5_index, h5_median, url_gsm, erro = self._buscar_venue_gsm(
-            nome_completo
-        )
+        nome_gsm, h5_index, h5_median, url_gsm, erro = self._buscar_venue_gsm(nome_completo)
 
         resultado.nome_gsm = nome_gsm
         resultado.h5_index = h5_index
@@ -681,14 +673,8 @@ def imprimir_tabela_revistas(resultados: List[RevistaMetrics]):
     print(f"\n{'=' * 120}")
     print(" REVISTAS - Métricas: Google Scholar (H5) + Scopus (CiteScore) + WoS (JIF)")
     print(f"{'=' * 120}")
-    print(
-        f"{'Sigla':<8} {'Nome':<25} {'H5':>6} {'E-H5':>5} "
-        f"{'CS':>6} {'E-CS':>5} {'JIF':>6} {'E-JIF':>6} {'Final':>6}"
-    )
-    print(
-        f"{'-' * 8} {'-' * 25} {'-' * 6} {'-' * 5} "
-        f"{'-' * 6} {'-' * 5} {'-' * 6} {'-' * 6} {'-' * 6}"
-    )
+    print(f"{'Sigla':<8} {'Nome':<25} {'H5':>6} {'E-H5':>5} {'CS':>6} {'E-CS':>5} {'JIF':>6} {'E-JIF':>6} {'Final':>6}")
+    print(f"{'-' * 8} {'-' * 25} {'-' * 6} {'-' * 5} {'-' * 6} {'-' * 5} {'-' * 6} {'-' * 6} {'-' * 6}")
 
     for r in resultados:
         nome = (r.nome_gsm or r.nome_completo or r.sigla)[:25]
@@ -715,10 +701,7 @@ def imprimir_tabela_revistas(resultados: List[RevistaMetrics]):
     print()
 
     # Add legend
-    print(
-        "Legenda: E-H5 (estrato H5), E-CS (estrato CiteScore), "
-        "E-JIF (estrato JIF), Final (melhor estrato)"
-    )
+    print("Legenda: E-H5 (estrato H5), E-CS (estrato CiteScore), E-JIF (estrato JIF), Final (melhor estrato)")
 
 
 # =============================================================================
@@ -730,12 +713,8 @@ def main():
     # Load environment variables from .env file
     load_dotenv()
 
-    parser = argparse.ArgumentParser(
-        description="Coleta métricas CAPES de periódicos e conferências"
-    )
-    parser.add_argument(
-        "--conferencias", action="store_true", help="Coleta apenas conferências"
-    )
+    parser = argparse.ArgumentParser(description="Coleta métricas CAPES de periódicos e conferências")
+    parser.add_argument("--conferencias", action="store_true", help="Coleta apenas conferências")
     parser.add_argument(
         "--revistas",
         action="store_true",
@@ -746,12 +725,8 @@ def main():
         action="store_true",
         help="Inclui coleta de JIF do Web of Science (requer WOS_API_KEY em .env)",
     )
-    parser.add_argument(
-        "--output", type=Path, default=OUTPUT_DIR, help="Diretório de saída"
-    )
-    parser.add_argument(
-        "--config", type=Path, default=CONFIG_DIR, help="Diretório de configuração"
-    )
+    parser.add_argument("--output", type=Path, default=OUTPUT_DIR, help="Diretório de saída")
+    parser.add_argument("--config", type=Path, default=CONFIG_DIR, help="Diretório de configuração")
 
     args = parser.parse_args()
 
@@ -796,9 +771,7 @@ def main():
 
             for i, conf in enumerate(conferencias, 1):
                 print(f"\n[{i}/{len(conferencias)}] {conf['sigla']}")
-                resultado = scraper.buscar_conferencia(
-                    conf["sigla"], conf.get("nome_completo")
-                )
+                resultado = scraper.buscar_conferencia(conf["sigla"], conf.get("nome_completo"))
                 resultados_conf.append(resultado)
 
                 if resultado.erro:
@@ -843,42 +816,30 @@ def main():
                 print(f"\n[{i}/{len(revistas)}] {rev['sigla']}")
 
                 # 1. Coleta H5-index (Google Scholar)
-                resultado = scraper.buscar_revista(
-                    rev["sigla"], rev["nome_completo"], rev.get("issn")
-                )
+                resultado = scraper.buscar_revista(rev["sigla"], rev["nome_completo"], rev.get("issn"))
 
                 if resultado.erro:
                     print(f"    ⚠️  GSM: {resultado.erro}")
                 else:
-                    print(
-                        f"    ✓ GSM: H5={resultado.h5_index} → {resultado.estrato_h5}"
-                    )
+                    print(f"    ✓ GSM: H5={resultado.h5_index} → {resultado.estrato_h5}")
 
                 # 2. Coleta JIF (Web of Science) se --wos ativado
                 if wos_client:
                     print("    🔍 Consultando WoS para JIF...")
-                    jif, jif_pct, cat_wos, url_wos, erro_wos = (
-                        wos_client.buscar_revista_wos(
-                            resultado.issn, resultado.nome_completo
-                        )
+                    jif, jif_pct, cat_wos, url_wos, erro_wos = wos_client.buscar_revista_wos(
+                        resultado.issn, resultado.nome_completo
                     )
 
                     resultado.jif = jif
                     resultado.jif_percentil = jif_pct
                     resultado.categoria_wos = cat_wos
                     resultado.url_wos = url_wos
-                    resultado.estrato_jif = (
-                        calcular_estrato_revista(jif_pct)
-                        if jif_pct is not None
-                        else None
-                    )
+                    resultado.estrato_jif = calcular_estrato_revista(jif_pct) if jif_pct is not None else None
 
                     if erro_wos:
                         print(f"    ⚠️  WoS: {erro_wos}")
                     else:
-                        print(
-                            f"    ✓ WoS: JIF={jif} (Pct={jif_pct}%) → {resultado.estrato_jif}"
-                        )
+                        print(f"    ✓ WoS: JIF={jif} (Pct={jif_pct}%) → {resultado.estrato_jif}")
 
                 # 3. Calcula estrato final (melhor entre H5, CiteScore, JIF)
                 resultado.estrato_final = calcular_estrato_final(
@@ -941,15 +902,9 @@ Revistas para consultar:
                 issn_info = f" (ISSN: {r['issn']})" if r.get("issn") else ""
                 print(f"   • {r['nome_completo']}{issn_info}")
 
-            print(
-                f"\n📝 Arquivo para preencher: {args.output / f'revistas_{timestamp}.csv'}"
-            )
-            print(
-                "   Preencha as colunas 'citescore', 'percentil' e 'area_tematica' com dados do Scopus."
-            )
-            print(
-                "   A coluna 'estrato_percentil' será calculada automaticamente após preencher."
-            )
+            print(f"\n📝 Arquivo para preencher: {args.output / f'revistas_{timestamp}.csv'}")
+            print("   Preencha as colunas 'citescore', 'percentil' e 'area_tematica' com dados do Scopus.")
+            print("   A coluna 'estrato_percentil' será calculada automaticamente após preencher.")
 
     # -------------------------------------------------------------------------
     # RESUMO
