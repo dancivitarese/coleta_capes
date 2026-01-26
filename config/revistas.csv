@@ -1,0 +1,9 @@
+# Lista de Revistas para Consulta de Métricas CAPES
+# Formato: sigla,nome_completo,issn
+# O ISSN ajuda na busca precisa (formato: XXXX-XXXX)
+# Linhas começando com # são ignoradas
+#
+SPE,SPE Journal,1086-055X
+TGRS,IEEE Transactions on Geoscience and Remote Sensing,0196-2892
+GRSL,IEEE Geoscience and Remote Sensing Letters,1545-598X
+GRSM,IEEE Geoscience and Remote Sensing Magazine,2473-2397

@@ -1,0 +1,10 @@
+# Lista de Conferências para Consulta de Métricas CAPES
+# Formato: sigla,nome_completo
+# A sigla é usada para buscar no Google Scholar Metrics
+# Linhas começando com # são ignoradas
+#
+NeurIPS,Conference on Neural Information Processing Systems
+AAAI,AAAI Conference on Artificial Intelligence
+ICML,International Conference on Machine Learning
+ICLR,International Conference on Learning Representations
+IJCNN,International Joint Conference on Neural Networks

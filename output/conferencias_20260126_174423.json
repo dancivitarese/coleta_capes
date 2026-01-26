@@ -1,0 +1,57 @@
+[
+  {
+    "sigla": "NeurIPS",
+    "nome_completo": "Conference on Neural Information Processing Systems",
+    "nome_gsm": null,
+    "h5_index": null,
+    "h5_median": null,
+    "estrato_capes": null,
+    "url_fonte": null,
+    "erro": "Erro de conexão: HTTPSConnectionPool(host='scholar.google.com', port=443): Max retries exceeded with url: /citations?view_op=search_venues&vq=NeurIPS&hl=en (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 403 Forbidden')))",
+    "data_coleta": "2026-01-26T17:44:23.825503"
+  },
+  {
+    "sigla": "AAAI",
+    "nome_completo": "AAAI Conference on Artificial Intelligence",
+    "nome_gsm": null,
+    "h5_index": null,
+    "h5_median": null,
+    "estrato_capes": null,
+    "url_fonte": null,
+    "erro": "Erro de conexão: HTTPSConnectionPool(host='scholar.google.com', port=443): Max retries exceeded with url: /citations?view_op=search_venues&vq=AAAI&hl=en (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 403 Forbidden')))",
+    "data_coleta": "2026-01-26T17:44:32.715170"
+  },
+  {
+    "sigla": "ICML",
+    "nome_completo": "International Conference on Machine Learning",
+    "nome_gsm": null,
+    "h5_index": null,
+    "h5_median": null,
+    "estrato_capes": null,
+    "url_fonte": null,
+    "erro": "Erro de conexão: HTTPSConnectionPool(host='scholar.google.com', port=443): Max retries exceeded with url: /citations?view_op=search_venues&vq=ICML&hl=en (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 403 Forbidden')))",
+    "data_coleta": "2026-01-26T17:44:38.815959"
+  },
+  {
+    "sigla": "ICLR",
+    "nome_completo": "International Conference on Learning Representations",
+    "nome_gsm": null,
+    "h5_index": null,
+    "h5_median": null,
+    "estrato_capes": null,
+    "url_fonte": null,
+    "erro": "Erro de conexão: HTTPSConnectionPool(host='scholar.google.com', port=443): Max retries exceeded with url: /citations?view_op=search_venues&vq=ICLR&hl=en (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 403 Forbidden')))",
+    "data_coleta": "2026-01-26T17:44:44.920308"
+  },
+  {
+    "sigla": "IJCNN",
+    "nome_completo": "International Joint Conference on Neural Networks",
+    "nome_gsm": null,
+    "h5_index": null,
+    "h5_median": null,
+    "estrato_capes": null,
+    "url_fonte": null,
+    "erro": "Erro de conexão: HTTPSConnectionPool(host='scholar.google.com', port=443): Max retries exceeded with url: /citations?view_op=search_venues&vq=IJCNN&hl=en (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 403 Forbidden')))",
+    "data_coleta": "2026-01-26T17:44:54.617358"
+  }
+]
