@@ -6,13 +6,14 @@ Coleta métricas de periódicos e conferências para avaliação CAPES.
 Procedimento 2 - Área de Computação 2025-2028.
 
 Fontes:
-- Conferências: Google Scholar Metrics (H5-index)
-- Periódicos: Scopus Preview (CiteScore + Percentil)
+- Conferências: Google Scholar Metrics (H5-index) - automático
+- Periódicos: Google Scholar Metrics (H5-index) - automático
+             + Scopus Preview (CiteScore + Percentil) - manual
 
 Uso:
     python capes_metrics.py                    # Coleta tudo
     python capes_metrics.py --conferencias     # Apenas conferências
-    python capes_metrics.py --revistas         # Apenas revistas (template)
+    python capes_metrics.py --revistas         # Apenas revistas (H5 + template Scopus)
 
 Configuração:
     config/revistas.csv     - Lista de periódicos
@@ -73,11 +74,16 @@ class RevistaMetrics:
     sigla: str
     nome_completo: str
     issn: Optional[str] = None
+    nome_gsm: Optional[str] = None
+    h5_index: Optional[int] = None
+    h5_median: Optional[int] = None
+    estrato_h5: Optional[str] = None
     citescore: Optional[float] = None
     percentil: Optional[float] = None
     area_tematica: Optional[str] = None
-    estrato_capes: Optional[str] = None
-    url_fonte: Optional[str] = None
+    estrato_percentil: Optional[str] = None
+    url_gsm: Optional[str] = None
+    url_scopus: Optional[str] = None
     erro: Optional[str] = None
     data_coleta: Optional[str] = None
 
@@ -218,22 +224,19 @@ class GoogleScholarMetricsScraper:
         print(f"    ⏳ Aguardando {delay:.1f}s...")
         time.sleep(delay)
 
-    def buscar_conferencia(
-        self, sigla: str, nome_completo: Optional[str] = None
-    ) -> ConferenciaMetrics:
-        """Busca métricas de uma conferência no Google Scholar Metrics."""
+    def _buscar_venue_gsm(self, query: str) -> tuple:
+        """
+        Busca genérica no Google Scholar Metrics.
 
-        resultado = ConferenciaMetrics(
-            sigla=sigla,
-            nome_completo=nome_completo,
-            data_coleta=datetime.now().isoformat(),
-        )
+        Args:
+            query: Termo de busca (nome da conferência ou revista)
 
+        Returns:
+            Tupla (nome_gsm, h5_index, h5_median, url_fonte, erro)
+        """
         try:
             self._delay()
 
-            # Tenta buscar pelo nome completo com URL encoding
-            query = nome_completo if nome_completo else sigla
             query_encoded = quote_plus(query)
             url = f"{self.BASE_URL}/citations?view_op=search_venues&vq={query_encoded}&hl=en"
 
@@ -245,34 +248,41 @@ class GoogleScholarMetricsScraper:
                 "unusual traffic" in response.text.lower()
                 or "captcha" in response.text.lower()
             ):
-                resultado.erro = "BLOQUEADO (CAPTCHA) - aguarde alguns minutos"
-                return resultado
+                return (
+                    None,
+                    None,
+                    None,
+                    None,
+                    "BLOQUEADO (CAPTCHA) - aguarde alguns minutos",
+                )
 
             soup = BeautifulSoup(response.text, "html.parser")
 
             # Encontra tabela de resultados
             tabela = soup.find("table", {"id": "gsc_mvt_table"})
             if not tabela:
-                resultado.erro = "Nenhum resultado encontrado"
-                return resultado
+                return None, None, None, None, "Nenhum resultado encontrado"
 
             # Pega todas as linhas e filtra as que têm células TD (ignora header com TH)
             linhas = tabela.find_all("tr")
             linhas_dados = [linha_tr for linha_tr in linhas if linha_tr.find("td")]
 
             if not linhas_dados:
-                resultado.erro = "Nenhum resultado na tabela"
-                return resultado
+                return None, None, None, None, "Nenhum resultado na tabela"
 
             # Pega primeira linha de dados (melhor match)
             linha = linhas_dados[0]
 
             # Nome do venue (texto direto na célula)
+            nome_gsm = None
             celula_nome = linha.find("td", {"class": "gsc_mvt_t"})
             if celula_nome:
-                resultado.nome_gsm = celula_nome.text.strip()
+                nome_gsm = celula_nome.text.strip()
 
             # H5-index e H5-median (estão em células separadas, ambas com classe gsc_mvt_n)
+            h5_index = None
+            h5_median = None
+            url_fonte = None
             celulas_metricas = linha.find_all("td", {"class": "gsc_mvt_n"})
 
             if len(celulas_metricas) >= 1:
@@ -280,10 +290,10 @@ class GoogleScholarMetricsScraper:
                 link_h5 = celulas_metricas[0].find("a")
                 if link_h5:
                     try:
-                        resultado.h5_index = int(link_h5.text.strip())
+                        h5_index = int(link_h5.text.strip())
                         href = link_h5.get("href", "")
                         if href:
-                            resultado.url_fonte = self.BASE_URL + str(href)
+                            url_fonte = self.BASE_URL + str(href)
                     except ValueError:
                         pass
 
@@ -291,17 +301,64 @@ class GoogleScholarMetricsScraper:
                 # Segunda célula: H5-median (pode estar em span ou direto)
                 texto_median = celulas_metricas[1].text.strip()
                 try:
-                    resultado.h5_median = int(texto_median)
+                    h5_median = int(texto_median)
                 except ValueError:
                     pass
 
-            # Calcula estrato
-            resultado.estrato_capes = calcular_estrato_conferencia(resultado.h5_index)
+            return nome_gsm, h5_index, h5_median, url_fonte, None
 
         except requests.RequestException as e:
-            resultado.erro = f"Erro de conexão: {str(e)}"
+            return None, None, None, None, f"Erro de conexão: {str(e)}"
         except Exception as e:
-            resultado.erro = f"Erro: {str(e)}"
+            return None, None, None, None, f"Erro: {str(e)}"
+
+    def buscar_conferencia(
+        self, sigla: str, nome_completo: Optional[str] = None
+    ) -> ConferenciaMetrics:
+        """Busca métricas de uma conferência no Google Scholar Metrics."""
+
+        resultado = ConferenciaMetrics(
+            sigla=sigla,
+            nome_completo=nome_completo,
+            data_coleta=datetime.now().isoformat(),
+        )
+
+        # Tenta buscar pelo nome completo, senão pela sigla
+        query = nome_completo if nome_completo else sigla
+        nome_gsm, h5_index, h5_median, url_fonte, erro = self._buscar_venue_gsm(query)
+
+        resultado.nome_gsm = nome_gsm
+        resultado.h5_index = h5_index
+        resultado.h5_median = h5_median
+        resultado.url_fonte = url_fonte
+        resultado.erro = erro
+        resultado.estrato_capes = calcular_estrato_conferencia(h5_index)
+
+        return resultado
+
+    def buscar_revista(
+        self, sigla: str, nome_completo: str, issn: Optional[str] = None
+    ) -> RevistaMetrics:
+        """Busca métricas de uma revista no Google Scholar Metrics."""
+
+        resultado = RevistaMetrics(
+            sigla=sigla,
+            nome_completo=nome_completo,
+            issn=issn,
+            data_coleta=datetime.now().isoformat(),
+        )
+
+        # Tenta buscar pelo nome completo
+        nome_gsm, h5_index, h5_median, url_gsm, erro = self._buscar_venue_gsm(
+            nome_completo
+        )
+
+        resultado.nome_gsm = nome_gsm
+        resultado.h5_index = h5_index
+        resultado.h5_median = h5_median
+        resultado.url_gsm = url_gsm
+        resultado.erro = erro
+        resultado.estrato_h5 = calcular_estrato_conferencia(h5_index)
 
         return resultado
 
@@ -354,21 +411,25 @@ def imprimir_tabela_conferencias(resultados: List[ConferenciaMetrics]):
 
 def imprimir_tabela_revistas(resultados: List[RevistaMetrics]):
     """Imprime resultados de revistas em tabela."""
-    print(f"\n{'=' * 80}")
-    print(" REVISTAS - Métricas Scopus")
-    print(f"{'=' * 80}")
+    print(f"\n{'=' * 95}")
+    print(" REVISTAS - Métricas Google Scholar (H5) + Scopus (CiteScore/Percentil)")
+    print(f"{'=' * 95}")
     print(
-        f"{'Sigla':<8} {'Nome':<35} {'CiteScore':>10} {'Percentil':>10} {'Estrato':>8}"
+        f"{'Sigla':<8} {'Nome':<30} {'H5':>6} {'E-H5':>5} {'CiteScore':>10} {'Percentil':>10} {'E-Pct':>6}"
     )
-    print(f"{'-' * 8} {'-' * 35} {'-' * 10} {'-' * 10} {'-' * 8}")
+    print(f"{'-' * 8} {'-' * 30} {'-' * 6} {'-' * 5} {'-' * 10} {'-' * 10} {'-' * 6}")
 
     for r in resultados:
-        nome = r.nome_completo[:35] if r.nome_completo else r.sigla
+        nome = (r.nome_gsm or r.nome_completo or r.sigla)[:30]
+        h5 = str(r.h5_index) if r.h5_index else "N/A"
+        estrato_h5 = r.estrato_h5 or "N/A"
         cs = f"{r.citescore:.1f}" if r.citescore else "N/A"
         pct = f"{r.percentil:.1f}%" if r.percentil else "N/A"
-        estrato = r.estrato_capes or "N/A"
+        estrato_pct = r.estrato_percentil or "N/A"
         erro = " ⚠️" if r.erro else ""
-        print(f"{r.sigla:<8} {nome:<35} {cs:>10} {pct:>10} {estrato:>8}{erro}")
+        print(
+            f"{r.sigla:<8} {nome:<30} {h5:>6} {estrato_h5:>5} {cs:>10} {pct:>10} {estrato_pct:>6}{erro}"
+        )
 
     print()
 
@@ -386,7 +447,9 @@ def main():
         "--conferencias", action="store_true", help="Coleta apenas conferências"
     )
     parser.add_argument(
-        "--revistas", action="store_true", help="Coleta apenas revistas (gera template)"
+        "--revistas",
+        action="store_true",
+        help="Coleta apenas revistas (H5-index + template Scopus)",
     )
     parser.add_argument(
         "--output", type=Path, default=OUTPUT_DIR, help="Diretório de saída"
@@ -459,8 +522,51 @@ def main():
         print(f"   → {len(revistas)} revistas encontradas")
 
         if revistas:
+            print("\n🔍 Buscando H5-index no Google Scholar Metrics...")
+            scraper = GoogleScholarMetricsScraper()
+            resultados_rev = []
+
+            for i, rev in enumerate(revistas, 1):
+                print(f"\n[{i}/{len(revistas)}] {rev['sigla']}")
+                resultado = scraper.buscar_revista(
+                    rev["sigla"], rev["nome_completo"], rev.get("issn")
+                )
+                resultados_rev.append(resultado)
+
+                if resultado.erro:
+                    print(f"    ⚠️  {resultado.erro}")
+                else:
+                    print(f"    ✓ H5={resultado.h5_index} → {resultado.estrato_h5}")
+
+            # Salva resultados com H5-index
+            salvar_csv(
+                resultados_rev,
+                args.output / f"revistas_{timestamp}.csv",
+                [
+                    "sigla",
+                    "nome_completo",
+                    "issn",
+                    "nome_gsm",
+                    "h5_index",
+                    "h5_median",
+                    "estrato_h5",
+                    "citescore",
+                    "percentil",
+                    "area_tematica",
+                    "estrato_percentil",
+                    "url_gsm",
+                    "url_scopus",
+                    "erro",
+                    "data_coleta",
+                ],
+            )
+            salvar_json(resultados_rev, args.output / f"revistas_{timestamp}.json")
+
+            imprimir_tabela_revistas(resultados_rev)
+
+            # Gera também template Scopus para preenchimento manual
             print("\n" + "=" * 75)
-            print(" REVISTAS - Coleta Manual Necessária")
+            print(" SCOPUS - Coleta Manual Necessária")
             print("=" * 75)
             print("""
 ⚠️  O Scopus Preview requer JavaScript e não permite scraping direto.
@@ -470,7 +576,7 @@ Para obter CiteScore e Percentil das revistas:
 1. Acesse: https://www.scopus.com/sources
 2. Busque cada revista pelo nome ou ISSN
 3. Anote: CiteScore, Percentile, Subject Area
-4. Preencha o arquivo de saída gerado abaixo
+4. Preencha as colunas no arquivo CSV gerado acima
 
 Revistas para consultar:
 """)
@@ -478,41 +584,14 @@ Revistas para consultar:
                 issn_info = f" (ISSN: {r['issn']})" if r.get("issn") else ""
                 print(f"   • {r['nome_completo']}{issn_info}")
 
-            # Gera template para preenchimento manual
-            template_path = args.output / f"revistas_template_{timestamp}.csv"
-            template_path.parent.mkdir(parents=True, exist_ok=True)
-
-            with open(template_path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow(
-                    [
-                        "sigla",
-                        "nome_completo",
-                        "issn",
-                        "citescore",
-                        "percentil",
-                        "area_tematica",
-                        "estrato_capes",
-                        "url_fonte",
-                    ]
-                )
-                for r in revistas:
-                    writer.writerow(
-                        [
-                            r["sigla"],
-                            r["nome_completo"],
-                            r.get("issn", ""),
-                            "",  # citescore - preencher
-                            "",  # percentil - preencher
-                            "",  # area_tematica - preencher
-                            "",  # estrato_capes - será calculado
-                            "",  # url_fonte - preencher
-                        ]
-                    )
-
-            print(f"\n📝 Template gerado: {template_path}")
             print(
-                "   Preencha as colunas 'citescore' e 'percentil' com dados do Scopus."
+                f"\n📝 Arquivo para preencher: {args.output / f'revistas_{timestamp}.csv'}"
+            )
+            print(
+                "   Preencha as colunas 'citescore', 'percentil' e 'area_tematica' com dados do Scopus."
+            )
+            print(
+                "   A coluna 'estrato_percentil' será calculada automaticamente após preencher."
             )
 
     # -------------------------------------------------------------------------

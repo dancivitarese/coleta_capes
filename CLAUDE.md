@@ -10,13 +10,14 @@ O projeto foi criado através de uma conversa com Claude.ai para automatizar a c
 
 ✅ **Conferências**: Coleta H5-index do Google Scholar e calcula estrato inicial (Etapa 1)
 ❌ **Conferências**: Ajuste CE-SBC (Top10/Top20) requer consulta manual à SBC
-⚠️ **Periódicos**: Gera template CSV, mas coleta de CiteScore é manual (Scopus requer JavaScript)
+✅ **Periódicos**: Coleta H5-index do Google Scholar e calcula estrato inicial
+⚠️ **Periódicos**: Coleta de CiteScore/Percentil é manual (Scopus requer JavaScript)
 
 ### Lista de Verificação para Uso Completo
 
-- [x] Executar script para coletar H5-index de conferências
-- [ ] Consultar rankings CE-SBC (eventos@sbc.org.br) e aplicar ajustes +1/+2
-- [ ] Acessar Scopus Preview e preencher template de revistas com CiteScore/Percentil
+- [x] Executar script para coletar H5-index de conferências e revistas
+- [ ] Consultar rankings CE-SBC (eventos@sbc.org.br) e aplicar ajustes +1/+2 nas conferências
+- [ ] Acessar Scopus Preview e preencher CSV de revistas com CiteScore/Percentil
 - [ ] (Opcional) Consultar Web of Science para JIF e usar o maior percentil
 - [ ] Validar resultados manualmente (matching pode ser imperfeito)
 
@@ -26,8 +27,12 @@ O projeto foi criado através de uma conversa com Claude.ai para automatizar a c
 
 A CAPES utiliza métricas bibliométricas para classificar periódicos e conferências em estratos de qualidade (A1 a A8). Este projeto automatiza a coleta dessas métricas de fontes públicas:
 
-- **Conferências**: H5-index do Google Scholar Metrics
-- **Periódicos**: CiteScore (Scopus) ou JIF (Web of Science) - usa o maior percentil
+- **Conferências**: H5-index do Google Scholar Metrics (automático)
+- **Periódicos**:
+  - H5-index do Google Scholar Metrics (automático)
+  - CiteScore (Scopus) - coleta manual via web
+  - JIF (Web of Science) - coleta manual via web (opcional)
+  - **Regra**: Usar o **MAIOR** percentil entre CiteScore e JIF
 
 ### Documentos de Referência CAPES
 
@@ -99,7 +104,8 @@ coleta_capes/
 └── output/                   # Resultados gerados (não versionados)
     ├── conferencias_YYYYMMDD_HHMMSS.csv
     ├── conferencias_YYYYMMDD_HHMMSS.json
-    └── revistas_template_YYYYMMDD_HHMMSS.csv
+    ├── revistas_YYYYMMDD_HHMMSS.csv
+    └── revistas_YYYYMMDD_HHMMSS.json
 ```
 
 ## Arquitetura e Componentes
@@ -125,16 +131,21 @@ class ConferenciaMetrics:
 ```python
 @dataclass
 class RevistaMetrics:
-    sigla: str                      # Ex: "TGRS"
-    nome_completo: str              # Nome completo
-    issn: Optional[str]             # ISSN (formato: XXXX-XXXX)
-    citescore: Optional[float]      # Métrica CiteScore
-    percentil: Optional[float]      # Percentil (0-100)
-    area_tematica: Optional[str]    # Área do Scopus
-    estrato_capes: Optional[str]    # A1-A8 calculado
-    url_fonte: Optional[str]        # URL do Scopus
-    erro: Optional[str]             # Mensagem de erro
-    data_coleta: Optional[str]      # Timestamp ISO
+    sigla: str                          # Ex: "TGRS"
+    nome_completo: str                  # Nome completo
+    issn: Optional[str]                 # ISSN (formato: XXXX-XXXX)
+    nome_gsm: Optional[str]             # Nome encontrado no GSM
+    h5_index: Optional[int]             # Métrica H5-index (GSM)
+    h5_median: Optional[int]            # Métrica H5-median (GSM)
+    estrato_h5: Optional[str]           # A1-A8 baseado em H5-index
+    citescore: Optional[float]          # Métrica CiteScore (Scopus)
+    percentil: Optional[float]          # Percentil (0-100, Scopus)
+    area_tematica: Optional[str]        # Área do Scopus
+    estrato_percentil: Optional[str]    # A1-A8 baseado em percentil
+    url_gsm: Optional[str]              # URL do Google Scholar
+    url_scopus: Optional[str]           # URL do Scopus
+    erro: Optional[str]                 # Mensagem de erro
+    data_coleta: Optional[str]          # Timestamp ISO
 ```
 
 ### 2. Módulos Principais
@@ -311,30 +322,37 @@ Exemplo 3: Workshop Regional
 
 ### Coleta de Periódicos (Semi-automática)
 
-**Por que não é totalmente automática?**
+**Coleta Automática (H5-index do Google Scholar)**:
+Similar às conferências, o script coleta automaticamente o H5-index de cada revista do Google Scholar Metrics e calcula o estrato inicial baseado nessa métrica.
+
+**Coleta Manual (CiteScore do Scopus)**:
 O Scopus Preview requer JavaScript para renderizar dados, impossibilitando scraping direto com BeautifulSoup.
 
 **Workflow híbrido**:
 
-1. **Preparação**
+1. **Coleta Automática de H5-index**
    - Carrega [config/revistas.csv](config/revistas.csv)
-   - Gera template CSV com colunas vazias
+   - Busca cada revista no Google Scholar Metrics
+   - Extrai H5-index e H5-median
+   - Calcula estrato baseado em H5-index
+   - Salva resultados em CSV e JSON
 
-2. **Etapa Manual** (usuário)
+2. **Etapa Manual - CiteScore** (usuário)
+   - Abre o arquivo CSV gerado
    - Acessa https://www.scopus.com/sources
    - Busca cada revista por nome/ISSN
-   - Anota CiteScore e Percentil
-   - Preenche template gerado
+   - Anota CiteScore, Percentil e Subject Area
+   - Preenche as colunas vazias no CSV: `citescore`, `percentil`, `area_tematica`, `url_scopus`
 
-3. **Etapa Automática** (futura)
-   - Ler template preenchido
-   - Calcular estratos
-   - Gerar relatório final
+3. **Cálculo do Estrato Final**
+   - Compara `estrato_h5` com `estrato_percentil` (após preencher)
+   - Usa o **melhor** estrato entre as duas métricas
+   - (Opcional) Se tiver JIF do Web of Science, compara os três e usa o melhor
 
-**Formato do Template**:
+**Formato do CSV de Saída**:
 ```csv
-sigla,nome_completo,issn,citescore,percentil,area_tematica,estrato_capes,url_fonte
-TGRS,IEEE Transactions on Geoscience and Remote Sensing,0196-2892,[PREENCHER],[PREENCHER],[PREENCHER],,[PREENCHER]
+sigla,nome_completo,issn,nome_gsm,h5_index,h5_median,estrato_h5,citescore,percentil,area_tematica,estrato_percentil,url_gsm,url_scopus,erro,data_coleta
+TGRS,IEEE Trans...,0196-2892,IEEE Transactions...,85,105,A1,[PREENCHER],[PREENCHER],[PREENCHER],,[URL_GSM],[PREENCHER],,2026-01-26...
 ```
 
 ## Tecnologias Utilizadas
@@ -445,27 +463,35 @@ python capes_metrics.py --revistas
 #### Para Periódicos
 
 1. **Preparar lista** em [config/revistas.csv](config/revistas.csv) com ISSN
-2. **Gerar template**:
+2. **Executar coleta de H5-index**:
    ```bash
    python capes_metrics.py --revistas
    ```
-3. **Coletar dados manualmente**:
+3. **Validar resultados** em `output/revistas_TIMESTAMP.csv`
+   - Verificar se o nome encontrado (coluna `nome_gsm`) corresponde à revista desejada
+   - Anotar H5-index e estrato inicial (coluna `estrato_h5`)
+
+4. **Coletar CiteScore/Percentil manualmente**:
+   - Abrir o arquivo CSV gerado (`output/revistas_TIMESTAMP.csv`)
    - Acessar https://www.scopus.com/sources
    - Para cada revista, buscar por nome ou ISSN
    - Anotar CiteScore, Percentil e Subject Area
    - (Opcional) Consultar Web of Science para JIF
 
-4. **Preencher template** CSV:
+5. **Preencher CSV gerado**:
+   - Preencher as colunas: `citescore`, `percentil`, `area_tematica`, `url_scopus`
+   - Exemplo:
    ```csv
-   sigla,nome_completo,issn,citescore,percentil,area_tematica,estrato_capes,url_fonte
-   TGRS,IEEE Trans...,0196-2892,13.7,95.2,Earth Sciences,A1,https://...
+   sigla,...,h5_index,estrato_h5,citescore,percentil,area_tematica,estrato_percentil,...
+   TGRS,...,85,A1,13.7,95.2,Earth Sciences,A1,...
    ```
 
-5. **Calcular estratos**:
-   - Usar tabela de percentis (87.5%, 75%, 62.5%, etc.)
-   - Se tiver JIF, usar o **maior** percentil
+6. **Calcular estrato final**:
+   - Comparar `estrato_h5` com `estrato_percentil`
+   - Usar o **melhor** estrato entre as duas métricas
+   - Se tiver JIF, comparar os três e usar o melhor
 
-6. **Validar** contra documentos CAPES
+7. **Validar** contra documentos CAPES
 
 ### Interpretação dos Resultados
 
@@ -492,6 +518,35 @@ NeurIPS,Conference on Neural Information Processing Systems,Neural Information P
 ]
 ```
 
+#### Arquivo CSV de Revistas
+```csv
+sigla,nome_completo,issn,nome_gsm,h5_index,h5_median,estrato_h5,citescore,percentil,area_tematica,estrato_percentil,url_gsm,url_scopus,erro,data_coleta
+TGRS,IEEE Transactions on Geoscience and Remote Sensing,0196-2892,IEEE Transactions on Geoscience and Remote Sensing,85,105,A1,,,,,https://scholar.google.com/...,,,2026-01-26T15:03:12
+```
+
+#### Arquivo JSON de Revistas
+```json
+[
+  {
+    "sigla": "TGRS",
+    "nome_completo": "IEEE Transactions on Geoscience and Remote Sensing",
+    "issn": "0196-2892",
+    "nome_gsm": "IEEE Transactions on Geoscience and Remote Sensing",
+    "h5_index": 85,
+    "h5_median": 105,
+    "estrato_h5": "A1",
+    "citescore": null,
+    "percentil": null,
+    "area_tematica": null,
+    "estrato_percentil": null,
+    "url_gsm": "https://scholar.google.com/...",
+    "url_scopus": null,
+    "erro": null,
+    "data_coleta": "2026-01-26T15:03:12"
+  }
+]
+```
+
 ## Limitações Conhecidas
 
 ### Técnicas
@@ -503,8 +558,8 @@ NeurIPS,Conference on Neural Information Processing Systems,Neural Information P
 
 2. **Matching Imperfeito**
    - Busca retorna primeira correspondência do Google Scholar
-   - Pode não ser exatamente a conferência desejada
-   - Solução: Validação manual dos resultados
+   - Pode não ser exatamente a conferência ou revista desejada
+   - Solução: Validação manual dos resultados (verificar coluna `nome_gsm`)
 
 3. **Scopus Não Automatizado**
    - Requer JavaScript para renderização
@@ -625,15 +680,38 @@ elif percentil >= 75.0: return "A2"
 
 ## Histórico de Desenvolvimento
 
-### Versão Inicial (2026-01-26)
+### Versão 1.1 (2026-01-26)
+
+**Atualização**: Coleta automática de H5-index para revistas
+
+#### Melhorias Implementadas
+
+- ✅ Coleta automática de H5-index para periódicos via Google Scholar Metrics
+- ✅ Cálculo de estrato inicial para revistas baseado em H5-index (`estrato_h5`)
+- ✅ Exportação CSV + JSON com ambas as métricas (H5 e CiteScore/Percentil)
+- ✅ Tabela de resultados mostrando ambos os estratos (`estrato_h5` e `estrato_percentil`)
+- ✅ Refatoração do scraper com método genérico `_buscar_venue_gsm()`
+- ✅ Atualização da documentação (CLAUDE.md e README.md)
+
+#### Workflow Atualizado para Revistas
+
+Antes: Apenas gerava template vazio para preenchimento manual
+Agora:
+1. Coleta H5-index automaticamente
+2. Calcula estrato baseado em H5
+3. Gera CSV com dados parciais (H5 preenchido, Scopus vazio)
+4. Usuário preenche colunas CiteScore/Percentil manualmente
+5. Compara ambos os estratos para decisão final
+
+### Versão 1.0 (2026-01-26)
 
 Criado via Claude.ai com as seguintes funcionalidades:
 
 #### ✅ Implementado
 
-- Scraping de H5-index do Google Scholar Metrics
+- Scraping de H5-index do Google Scholar Metrics para conferências
 - Cálculo automático de estratos para conferências (Etapa 1 - H5-index)
-- Geração de template para periódicos
+- Geração de template para periódicos (apenas estrutura)
 - Exportação CSV + JSON
 - CLI com argparse
 - Rate limiting básico
@@ -647,7 +725,7 @@ Criado via Claude.ai com as seguintes funcionalidades:
 - Coleta automática de CiteScore do Scopus (requer JavaScript/Selenium)
 - Coleta de JIF do Web of Science (requer assinatura)
 - Leitura e processamento de templates preenchidos de revistas
-- Cálculo de estrato final para revistas com dados preenchidos
+- Cálculo automático de estrato final para revistas (requer comparação H5 vs Percentil)
 
 ## Contatos Úteis
 

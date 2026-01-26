@@ -34,7 +34,7 @@ python capes_metrics.py
 python capes_metrics.py --conferencias
 ```
 
-### Apenas revistas (gera template para preenchimento manual)
+### Apenas revistas (coleta H5-index + template Scopus)
 ```bash
 python capes_metrics.py --revistas
 ```
@@ -64,14 +64,23 @@ NATURE,Nature,0028-0836
 | Tipo | Fonte | Métrica | Automático |
 |------|-------|---------|------------|
 | Conferências | Google Scholar Metrics | H5-index | ✅ Sim |
-| Revistas | Scopus Preview | CiteScore + Percentil | ❌ Manual |
+| Revistas | Google Scholar Metrics | H5-index | ✅ Sim |
+| Revistas | Scopus Preview | CiteScore + Percentil | ⚠️ Manual |
 
-### Para revistas (coleta manual)
+### Para revistas (workflow híbrido)
 
-1. Acesse: https://www.scopus.com/sources
-2. Busque pelo nome ou ISSN da revista
-3. Anote: **CiteScore** e **Percentile**
-4. Preencha o template CSV gerado em `output/`
+**Automático** (executado pelo script):
+1. Coleta H5-index do Google Scholar Metrics
+2. Calcula estrato inicial baseado em H5 (`estrato_h5`)
+3. Gera arquivo CSV com dados parciais
+
+**Manual** (usuário deve fazer):
+1. Abrir arquivo CSV gerado em `output/revistas_TIMESTAMP.csv`
+2. Acessar: https://www.scopus.com/sources
+3. Buscar pelo nome ou ISSN de cada revista
+4. Anotar: **CiteScore**, **Percentile** e **Subject Area**
+5. Preencher as colunas vazias: `citescore`, `percentil`, `area_tematica`, `url_scopus`
+6. Comparar `estrato_h5` com `estrato_percentil` (após cálculo) e usar o melhor
 
 ## Cálculo do Estrato CAPES
 
@@ -101,14 +110,26 @@ NATURE,Nature,0028-0836
 | A7 | >= 12.5% |
 | A8 | < 12.5% |
 
+## Arquivos Gerados
+
+### Conferências
+- `output/conferencias_YYYYMMDD_HHMMSS.csv` - Dados em formato CSV
+- `output/conferencias_YYYYMMDD_HHMMSS.json` - Dados em formato JSON
+
+### Revistas
+- `output/revistas_YYYYMMDD_HHMMSS.csv` - Dados em formato CSV (H5 preenchido, Scopus vazio)
+- `output/revistas_YYYYMMDD_HHMMSS.json` - Dados em formato JSON
+
 ## Limitações
 
 - **Google Scholar Metrics**: Pode bloquear após muitas requisições (CAPTCHA)
 - **Scopus Preview**: Requer JavaScript, não permite scraping direto
 - **Rankings SBC**: Não incluídos automaticamente (ajuste manual necessário)
+- **Matching**: Primeira correspondência do Google Scholar pode não ser exata - validar coluna `nome_gsm`
 
 ## Exemplo de Saída
 
+### Conferências
 ```
 CONFERÊNCIAS - Métricas Google Scholar
 ===========================================================================
@@ -120,3 +141,16 @@ ICML       International Conference on Machine L      224       A1
 ICLR       International Conference on Learning       217       A1
 IJCNN      International Joint Conference on Neu       47       A1
 ```
+
+### Revistas
+```
+REVISTAS - Métricas Google Scholar (H5) + Scopus (CiteScore/Percentil)
+===============================================================================================
+Sigla    Nome                           H5     E-H5  CiteScore  Percentil  E-Pct
+-------- ------------------------------ ------ ----- ---------- ---------- ------
+TGRS     IEEE Transactions on Geos...     85    A1        N/A        N/A    N/A
+SPE      SPE Journal                      42    A1        N/A        N/A    N/A
+GRSL     IEEE Geoscience and Remo...      58    A1        N/A        N/A    N/A
+```
+
+**Nota**: As colunas `CiteScore`, `Percentil` e `E-Pct` (estrato baseado em percentil) devem ser preenchidas manualmente consultando o Scopus.
