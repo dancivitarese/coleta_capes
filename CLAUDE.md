@@ -1,0 +1,769 @@
+# CAPES Metrics Collector - Documentação Técnica
+
+## Visão Geral
+
+Sistema automatizado para coleta de métricas de periódicos científicos e conferências acadêmicas, desenvolvido para apoiar o processo de avaliação CAPES (Coordenação de Aperfeiçoamento de Pessoal de Nível Superior) conforme o **Procedimento 2 - Área de Computação 2025-2028**.
+
+O projeto foi criado através de uma conversa com Claude.ai para automatizar a coleta de dados bibliométricos necessários para classificação de publicações científicas em estratos (A1-A8).
+
+### O que o projeto faz automaticamente
+
+✅ **Conferências**: Coleta H5-index do Google Scholar e calcula estrato inicial (Etapa 1)
+❌ **Conferências**: Ajuste CE-SBC (Top10/Top20) requer consulta manual à SBC
+⚠️ **Periódicos**: Gera template CSV, mas coleta de CiteScore é manual (Scopus requer JavaScript)
+
+### Lista de Verificação para Uso Completo
+
+- [x] Executar script para coletar H5-index de conferências
+- [ ] Consultar rankings CE-SBC (eventos@sbc.org.br) e aplicar ajustes +1/+2
+- [ ] Acessar Scopus Preview e preencher template de revistas com CiteScore/Percentil
+- [ ] (Opcional) Consultar Web of Science para JIF e usar o maior percentil
+- [ ] Validar resultados manualmente (matching pode ser imperfeito)
+
+## Contexto e Objetivo
+
+### Propósito
+
+A CAPES utiliza métricas bibliométricas para classificar periódicos e conferências em estratos de qualidade (A1 a A8). Este projeto automatiza a coleta dessas métricas de fontes públicas:
+
+- **Conferências**: H5-index do Google Scholar Metrics
+- **Periódicos**: CiteScore (Scopus) ou JIF (Web of Science) - usa o maior percentil
+
+### Documentos de Referência CAPES
+
+O sistema implementa as regras definidas nos seguintes documentos oficiais:
+
+- `COMPUTACAO_DOCAREA_2025_2028.pdf` - Documento de Área da Computação
+- `COMPUTACAO_FICHA_2025_2028.pdf` - Ficha de Avaliação
+- `19052025_20250502_DocumentoReferencial_FICHA_pages_*.pdf` - Diretrizes Comuns
+- `13052025_antoniogomes06maiodav.pdf` - Novas Diretrizes 2025
+
+### Classificação CAPES
+
+O sistema implementa as regras de estratificação definidas pela área de Computação:
+
+#### Conferências (processo em 2 etapas)
+
+**Etapa 1 - Classificação inicial por H5-index**:
+```
+A1: >= 35  |  A5: >= 12
+A2: >= 25  |  A6: >= 9
+A3: >= 20  |  A7: >= 6
+A4: >= 15  |  A8: > 0
+```
+
+**Etapa 2 - Ajuste CE-SBC** (Comissão Especial da SBC):
+- **Top10**: +2 níveis (saturação em A3)
+- **Top20**: +1 nível (saturação em A3)
+- **Relevante**: mantém estrato do H5-index
+- Sem H5 mas **Top**: recebe A7
+- Sem H5 mas **Relevante**: recebe A8
+
+**Critério Tradição SBC**:
+- 20+ anos de existência: pode ser classificado como A4
+- 10+ anos de existência: pode ser classificado como A5
+
+> **Nota**: O script atual implementa apenas a Etapa 1. O ajuste CE-SBC requer consulta manual aos rankings da SBC (ver seção "Contatos Úteis").
+
+#### Periódicos (baseado no Percentil)
+```
+A1: >= 87.5%  |  A5: >= 37.5%
+A2: >= 75.0%  |  A6: >= 25.0%
+A3: >= 62.5%  |  A7: >= 12.5%
+A4: >= 50.0%  |  A8: < 12.5%
+```
+
+**Métricas aceitas**:
+- **CiteScore** (Scopus) - percentil na categoria
+- **JIF** (Journal Impact Factor, Web of Science) - percentil na categoria
+- **Regra**: Usar o **MAIOR** percentil entre as duas fontes
+
+> **Nota**: O script atual coleta apenas CiteScore (Scopus). Para incluir JIF, é necessário acesso ao Web of Science.
+
+## Estrutura do Projeto
+
+```
+coleta_capes/
+│
+├── capes_metrics.py          # Script principal (~500 linhas)
+├── requirements.txt          # Dependências Python
+├── README.md                 # Documentação de uso
+├── CLAUDE.md                 # Esta documentação técnica
+├── LICENSE                   # Licença do projeto
+├── .gitignore               # Configuração Git
+│
+├── config/                   # Arquivos de configuração
+│   ├── conferencias.csv     # Lista de conferências a consultar
+│   └── revistas.csv         # Lista de periódicos a consultar
+│
+└── output/                   # Resultados gerados (não versionados)
+    ├── conferencias_YYYYMMDD_HHMMSS.csv
+    ├── conferencias_YYYYMMDD_HHMMSS.json
+    └── revistas_template_YYYYMMDD_HHMMSS.csv
+```
+
+## Arquitetura e Componentes
+
+### 1. Estruturas de Dados
+
+#### `ConferenciaMetrics` (dataclass)
+```python
+@dataclass
+class ConferenciaMetrics:
+    sigla: str                      # Ex: "NeurIPS"
+    nome_completo: Optional[str]    # Nome original da lista
+    nome_gsm: Optional[str]         # Nome encontrado no GSM
+    h5_index: Optional[int]         # Métrica H5-index
+    h5_median: Optional[int]        # Métrica H5-median
+    estrato_capes: Optional[str]    # A1-A8 calculado
+    url_fonte: Optional[str]        # URL do Google Scholar
+    erro: Optional[str]             # Mensagem de erro (se houver)
+    data_coleta: Optional[str]      # Timestamp ISO
+```
+
+#### `RevistaMetrics` (dataclass)
+```python
+@dataclass
+class RevistaMetrics:
+    sigla: str                      # Ex: "TGRS"
+    nome_completo: str              # Nome completo
+    issn: Optional[str]             # ISSN (formato: XXXX-XXXX)
+    citescore: Optional[float]      # Métrica CiteScore
+    percentil: Optional[float]      # Percentil (0-100)
+    area_tematica: Optional[str]    # Área do Scopus
+    estrato_capes: Optional[str]    # A1-A8 calculado
+    url_fonte: Optional[str]        # URL do Scopus
+    erro: Optional[str]             # Mensagem de erro
+    data_coleta: Optional[str]      # Timestamp ISO
+```
+
+### 2. Módulos Principais
+
+#### Configuração Global
+- **`BASE_DIR`**: Diretório raiz do projeto
+- **`CONFIG_DIR`**: Pasta com listas de conferências/revistas
+- **`OUTPUT_DIR`**: Pasta de saída dos resultados
+- **`DELAY_MIN/MAX`**: Controle de rate limiting (5-10s)
+- **`HEADERS`**: User-Agent para requisições HTTP
+
+#### Cálculo de Estratos
+```python
+calcular_estrato_conferencia(h5_index: int) -> str
+calcular_estrato_revista(percentil: float) -> str
+```
+Implementam as regras de estratificação CAPES com validação de entrada.
+
+#### Carregamento de Configuração
+```python
+carregar_conferencias(filepath: Path) -> List[Dict]
+carregar_revistas(filepath: Path) -> List[Dict]
+```
+- Lê arquivos CSV com formato customizado
+- Ignora linhas em branco e comentários (#)
+- Valida formato esperado
+
+#### Scraping de Dados
+
+##### `GoogleScholarMetricsScraper`
+**Responsabilidade**: Coleta automática de H5-index
+
+**Métodos**:
+- `_delay()`: Implementa rate limiting randomizado
+- `buscar_conferencia(sigla, nome_completo)`: Busca e extrai métricas
+
+**Fluxo**:
+1. Aguarda delay aleatório (anti-bloqueio)
+2. Monta query de busca (prioritiza nome completo)
+3. Faz requisição GET ao Google Scholar Metrics
+4. Detecta CAPTCHA/bloqueio
+5. Parseia HTML com BeautifulSoup
+6. Extrai primeira linha da tabela de resultados
+7. Captura H5-index, H5-median e nome GSM
+8. Calcula estrato CAPES
+9. Retorna objeto `ConferenciaMetrics`
+
+**Tratamento de Erros**:
+- Bloqueio CAPTCHA
+- Timeout de rede
+- Ausência de resultados
+- Parsing inválido
+
+#### Saída de Resultados
+```python
+salvar_csv(resultados, filepath, colunas)
+salvar_json(resultados, filepath)
+imprimir_tabela_conferencias(resultados)
+imprimir_tabela_revistas(resultados)
+```
+- Cria diretórios automaticamente
+- Formato CSV com headers
+- JSON indentado (UTF-8)
+- Tabelas formatadas no console
+
+### 3. CLI (Command-Line Interface)
+
+Implementado com `argparse`:
+
+```bash
+# Coleta tudo (conferências + template revistas)
+python capes_metrics.py
+
+# Apenas conferências
+python capes_metrics.py --conferencias
+
+# Apenas revistas (gera template)
+python capes_metrics.py --revistas
+
+# Customizar diretórios
+python capes_metrics.py --output ./resultados --config ./minhas_listas
+```
+
+## Funcionamento Detalhado
+
+### Fluxo de Execução
+
+```
+┌─────────────────────────────────────────┐
+│ 1. Parse argumentos CLI                 │
+└────────────────┬────────────────────────┘
+                 │
+    ┌────────────┴──────────────┐
+    │                           │
+    ▼                           ▼
+┌─────────────────┐    ┌─────────────────┐
+│ 2a. Conferências│    │ 2b. Revistas    │
+└────────┬────────┘    └────────┬────────┘
+         │                      │
+         ▼                      ▼
+┌─────────────────┐    ┌─────────────────┐
+│ 3. Carrega CSV  │    │ 3. Carrega CSV  │
+└────────┬────────┘    └────────┬────────┘
+         │                      │
+         ▼                      ▼
+┌─────────────────┐    ┌─────────────────┐
+│ 4. Scrape GSM   │    │ 4. Gera Template│
+│    (automático) │    │    (manual)     │
+└────────┬────────┘    └────────┬────────┘
+         │                      │
+         ▼                      ▼
+┌─────────────────┐    ┌─────────────────┐
+│ 5. Calcula      │    │ 5. Instrui      │
+│    Estrato      │    │    Usuário      │
+└────────┬────────┘    └────────┬────────┘
+         │                      │
+         ▼                      ▼
+┌─────────────────┐    ┌─────────────────┐
+│ 6. Salva        │    │ 6. Salva        │
+│    CSV + JSON   │    │    Template CSV │
+└────────┬────────┘    └────────┬────────┘
+         │                      │
+         └──────────┬───────────┘
+                    ▼
+          ┌─────────────────┐
+          │ 7. Exibe Resumo │
+          └─────────────────┘
+```
+
+### Coleta de Conferências (Automática)
+
+1. **Preparação**
+   - Carrega [config/conferencias.csv](config/conferencias.csv)
+   - Inicializa sessão HTTP com headers customizados
+
+2. **Para cada conferência**
+   - Aguarda 5-10s (rate limiting)
+   - Busca no Google Scholar Metrics
+   - Extrai H5-index da primeira linha da tabela
+   - Calcula estrato automaticamente
+   - Loga progresso no console
+
+3. **Finalização**
+   - Salva [output/conferencias_TIMESTAMP.csv](output/)
+   - Salva [output/conferencias_TIMESTAMP.json](output/)
+   - Exibe tabela resumida
+
+#### Fluxo Completo de Classificação de Conferências
+
+```
+Conferência → [Etapa 1] → [Etapa 2] → Estrato Final
+                  ↓            ↓
+            H5-index    Ranking CE-SBC
+              (GSM)      (Manual)
+
+Exemplo 1: ICSE
+  H5-index: 42 → A1 (inicial)
+  CE-SBC: Top10 → +2 níveis → A1 (saturado em A3, mas já é A1)
+  Estrato Final: A1
+
+Exemplo 2: SBES
+  H5-index: 18 → A3 (inicial)
+  CE-SBC: Relevante → mantém → A3
+  Critério Tradição: 30+ anos → pode ser A4
+  Estrato Final: A3 ou A4 (decisão da área)
+
+Exemplo 3: Workshop Regional
+  H5-index: 3 → A8 (inicial)
+  CE-SBC: Não listado → mantém → A8
+  Estrato Final: A8
+```
+
+> **Importante**: O script atual calcula apenas o estrato da **Etapa 1** (H5-index). A aplicação dos ajustes CE-SBC e critérios de tradição deve ser feita manualmente.
+
+### Coleta de Periódicos (Semi-automática)
+
+**Por que não é totalmente automática?**
+O Scopus Preview requer JavaScript para renderizar dados, impossibilitando scraping direto com BeautifulSoup.
+
+**Workflow híbrido**:
+
+1. **Preparação**
+   - Carrega [config/revistas.csv](config/revistas.csv)
+   - Gera template CSV com colunas vazias
+
+2. **Etapa Manual** (usuário)
+   - Acessa https://www.scopus.com/sources
+   - Busca cada revista por nome/ISSN
+   - Anota CiteScore e Percentil
+   - Preenche template gerado
+
+3. **Etapa Automática** (futura)
+   - Ler template preenchido
+   - Calcular estratos
+   - Gerar relatório final
+
+**Formato do Template**:
+```csv
+sigla,nome_completo,issn,citescore,percentil,area_tematica,estrato_capes,url_fonte
+TGRS,IEEE Transactions on Geoscience and Remote Sensing,0196-2892,[PREENCHER],[PREENCHER],[PREENCHER],,[PREENCHER]
+```
+
+## Tecnologias Utilizadas
+
+### Dependências Python
+
+```python
+requests>=2.28.0        # HTTP client
+beautifulsoup4>=4.11.0  # HTML parsing
+```
+
+**Bibliotecas padrão**:
+- `csv`: Leitura/escrita de CSVs
+- `json`: Serialização JSON
+- `argparse`: Interface CLI
+- `pathlib`: Manipulação de caminhos
+- `datetime`: Timestamps
+- `dataclasses`: Estruturas de dados
+- `typing`: Type hints
+- `time`, `random`: Rate limiting
+
+### Fontes de Dados
+
+#### Fontes Utilizadas
+
+| Fonte | URL Base | Métrica | Acesso |
+|-------|----------|---------|--------|
+| Google Scholar Metrics | https://scholar.google.com | H5-index | HTTP GET (HTML) |
+| Scopus Preview | https://www.scopus.com/sources | CiteScore + Percentil | JavaScript (manual) |
+| CE-SBC Rankings | eventos@sbc.org.br | Top10/Top20/Relevante | Consulta por email |
+
+#### Fontes Descartadas
+
+- **OpenAlex** (https://openalex.org): Não fornece CiteScore nem JIF oficiais (apenas métricas proprietárias similares, não aceitas pela CAPES)
+- **Web of Science** (JIF): Requer assinatura institucional (não implementado na versão atual)
+
+## Como Usar
+
+### Instalação
+
+```bash
+# Clonar repositório
+git clone <repo-url>
+cd coleta_capes
+
+# Instalar dependências
+pip install -r requirements.txt
+```
+
+### Configuração
+
+#### Adicionar Conferências
+
+Editar [config/conferencias.csv](config/conferencias.csv):
+```csv
+# Formato: sigla,nome_completo
+ICSE,International Conference on Software Engineering
+FSE,Foundations of Software Engineering
+```
+
+#### Adicionar Periódicos
+
+Editar [config/revistas.csv](config/revistas.csv):
+```csv
+# Formato: sigla,nome_completo,issn
+TOSEM,ACM Transactions on Software Engineering and Methodology,1049-331X
+JSS,Journal of Systems and Software,0164-1212
+```
+
+### Execução
+
+```bash
+# Coleta completa
+python capes_metrics.py
+
+# Apenas conferências
+python capes_metrics.py --conferencias
+
+# Apenas periódicos (gera template)
+python capes_metrics.py --revistas
+```
+
+### Fluxo de Trabalho Recomendado
+
+#### Para Conferências
+
+1. **Preparar lista** em [config/conferencias.csv](config/conferencias.csv)
+2. **Executar coleta**:
+   ```bash
+   python capes_metrics.py --conferencias
+   ```
+3. **Validar resultados** em `output/conferencias_TIMESTAMP.csv`
+   - Verificar se o nome encontrado (coluna `nome_gsm`) corresponde à conferência desejada
+   - Anotar H5-index e estrato inicial (Etapa 1)
+
+4. **Consultar CE-SBC**:
+   - Enviar email para eventos@sbc.org.br solicitando rankings atuais
+   - Identificar quais conferências são Top10/Top20/Relevante
+
+5. **Aplicar ajustes manualmente**:
+   - Top10: +2 níveis (máximo A3)
+   - Top20: +1 nível (máximo A3)
+   - Conferências com 20+ anos: considerar A4
+   - Conferências com 10+ anos: considerar A5
+
+6. **Documentar estrato final** em planilha própria
+
+#### Para Periódicos
+
+1. **Preparar lista** em [config/revistas.csv](config/revistas.csv) com ISSN
+2. **Gerar template**:
+   ```bash
+   python capes_metrics.py --revistas
+   ```
+3. **Coletar dados manualmente**:
+   - Acessar https://www.scopus.com/sources
+   - Para cada revista, buscar por nome ou ISSN
+   - Anotar CiteScore, Percentil e Subject Area
+   - (Opcional) Consultar Web of Science para JIF
+
+4. **Preencher template** CSV:
+   ```csv
+   sigla,nome_completo,issn,citescore,percentil,area_tematica,estrato_capes,url_fonte
+   TGRS,IEEE Trans...,0196-2892,13.7,95.2,Earth Sciences,A1,https://...
+   ```
+
+5. **Calcular estratos**:
+   - Usar tabela de percentis (87.5%, 75%, 62.5%, etc.)
+   - Se tiver JIF, usar o **maior** percentil
+
+6. **Validar** contra documentos CAPES
+
+### Interpretação dos Resultados
+
+#### Arquivo CSV de Conferências
+```csv
+sigla,nome_completo,nome_gsm,h5_index,h5_median,estrato_capes,url_fonte,erro,data_coleta
+NeurIPS,Conference on Neural Information Processing Systems,Neural Information Processing Systems,298,402,A1,https://scholar.google.com/...,null,2026-01-26T15:03:12
+```
+
+#### Arquivo JSON de Conferências
+```json
+[
+  {
+    "sigla": "NeurIPS",
+    "nome_completo": "Conference on Neural Information Processing Systems",
+    "nome_gsm": "Neural Information Processing Systems",
+    "h5_index": 298,
+    "h5_median": 402,
+    "estrato_capes": "A1",
+    "url_fonte": "https://scholar.google.com/...",
+    "erro": null,
+    "data_coleta": "2026-01-26T15:03:12"
+  }
+]
+```
+
+## Limitações Conhecidas
+
+### Técnicas
+
+1. **Rate Limiting do Google Scholar**
+   - Bloqueio CAPTCHA após ~20-30 requisições consecutivas
+   - Solução: Delay de 5-10s entre requests + aguardar alguns minutos se bloqueado
+   - **Importante**: Script foi desenvolvido em ambiente com restrições. Teste localmente antes de usar em produção!
+
+2. **Matching Imperfeito**
+   - Busca retorna primeira correspondência do Google Scholar
+   - Pode não ser exatamente a conferência desejada
+   - Solução: Validação manual dos resultados
+
+3. **Scopus Não Automatizado**
+   - Requer JavaScript para renderização
+   - Coleta manual necessária
+   - Alternativas futuras: Selenium/Playwright, API oficial (paga)
+
+4. **Sem Histórico de Métricas**
+   - Coleta snapshot do momento atual
+   - Não rastreia mudanças temporais
+   - Google Scholar atualiza anualmente
+
+### Documentação CAPES
+
+5. **Ajustes CE-SBC**
+   - Rankings Top10/Top20/Relevante não incluídos automaticamente
+   - Requer consulta por email: eventos@sbc.org.br
+   - Ajuste manual do estrato final (+1 ou +2 níveis)
+   - Critério de tradição SBC (10+/20+ anos) também manual
+
+6. **Critérios Qualitativos**
+   - Sistema não considera critérios subjetivos
+   - Avaliação humana ainda necessária
+
+7. **Web of Science (JIF)**
+   - Métrica JIF não coletada (requer assinatura institucional)
+   - Percentil JIF pode ser maior que CiteScore em alguns casos
+   - Coleta manual necessária se disponível
+
+## Detalhes Técnicos
+
+### Parsing HTML (Google Scholar)
+
+**Seletores CSS utilizados**:
+```python
+tabela = soup.find("table", {"id": "gsc_mvt_table"})
+linha = tabela.find("tr", {"class": "gsc_mvt_row"})
+celula_nome = linha.find("td", {"class": "gsc_mvt_t"})
+celula_h5 = linha.find("td", {"class": "gsc_mvt_n"})
+```
+
+**Estrutura esperada**:
+```html
+<table id="gsc_mvt_table">
+  <tr class="gsc_mvt_row">
+    <td class="gsc_mvt_t">
+      <a href="/citations?...">Nome da Conferência</a>
+    </td>
+    <td class="gsc_mvt_n">
+      <a>298</a> <!-- H5-index -->
+      <a>402</a> <!-- H5-median -->
+    </td>
+  </tr>
+</table>
+```
+
+### Anti-Bloqueio
+
+**Estratégias implementadas**:
+- User-Agent realista (Mozilla/5.0)
+- Delay randomizado entre requests
+- Detecção de CAPTCHA via palavras-chave
+- Session reuse (mantém cookies)
+
+**Não implementado** (possíveis melhorias):
+- Proxy rotation
+- Headless browser
+- IP rotation via VPN
+
+### Cálculo de Estrato
+
+**Conferências** (lógica em cascata):
+```python
+if h5_index >= 35: return "A1"
+elif h5_index >= 25: return "A2"
+# ... (demais faixas)
+elif h5_index > 0: return "A8"
+else: return "N/C"  # Não classificado
+```
+
+**Periódicos** (baseado em percentil):
+```python
+if percentil >= 87.5: return "A1"
+elif percentil >= 75.0: return "A2"
+# ... (faixas de 12.5%)
+```
+
+## Próximos Passos e Pendências
+
+### Curto Prazo
+
+- [ ] Testar script localmente (Google Scholar pode estar bloqueado em alguns ambientes)
+- [ ] Preencher template de revistas com dados do Scopus Preview
+- [ ] Obter rankings CE-SBC (contatar eventos@sbc.org.br)
+- [ ] Implementar leitura de templates de revistas preenchidos
+- [ ] Validar formato de ISSN (regex: `\d{4}-\d{3}[\dX]`)
+- [ ] Adicionar modo `--dry-run` (simulação sem requests)
+- [ ] Exportar relatório consolidado PDF/Excel
+
+### Médio Prazo
+
+- [ ] Implementar cálculo de ajuste CE-SBC no script
+- [ ] Adicionar suporte a Scopus API (requer credenciais institucionais)
+- [ ] Cache local de resultados (SQLite/JSON)
+- [ ] Comparação com coletas anteriores (diff)
+- [ ] Scraping Scopus com Selenium/Playwright
+- [ ] Interface web (Flask/FastAPI + dashboard)
+- [ ] Adicionar suporte a Web of Science (JIF)
+
+### Longo Prazo
+
+- [ ] Sistema de cadastro de artigos por usuário
+- [ ] Cálculo de métricas agregadas do programa de pós-graduação
+- [ ] Machine learning para validação de matching
+- [ ] Sistema de notificações (mudanças em estratos)
+- [ ] Multi-threading para coleta paralela
+- [ ] Dockerfile para deploy containerizado
+- [ ] Deploy online (GitHub Pages, Vercel, etc.)
+
+## Histórico de Desenvolvimento
+
+### Versão Inicial (2026-01-26)
+
+Criado via Claude.ai com as seguintes funcionalidades:
+
+#### ✅ Implementado
+
+- Scraping de H5-index do Google Scholar Metrics
+- Cálculo automático de estratos para conferências (Etapa 1 - H5-index)
+- Geração de template para periódicos
+- Exportação CSV + JSON
+- CLI com argparse
+- Rate limiting básico
+- Detecção de CAPTCHA
+- Documentação completa (README + CLAUDE.md)
+
+#### ❌ Não Implementado (Requer Trabalho Manual ou APIs Pagas)
+
+- Ajuste CE-SBC (Etapa 2) para conferências
+- Critério de tradição SBC (10+/20+ anos)
+- Coleta automática de CiteScore do Scopus (requer JavaScript/Selenium)
+- Coleta de JIF do Web of Science (requer assinatura)
+- Leitura e processamento de templates preenchidos de revistas
+- Cálculo de estrato final para revistas com dados preenchidos
+
+## Contatos Úteis
+
+### APIs e Serviços
+
+- **Scopus API**: https://dev.elsevier.com (requer email institucional para acesso)
+- **Scopus Preview** (gratuito): https://www.scopus.com/sources
+- **Google Scholar Metrics**: https://scholar.google.com/citations?view_op=top_venues
+- **OpenAlex API**: https://docs.openalex.org (não utilizado - métricas não oficiais)
+
+### Sociedade Brasileira de Computação
+
+- **Rankings CE-SBC**: eventos@sbc.org.br
+- **Website SBC**: https://www.sbc.org.br/
+
+### CAPES
+
+- **Portal CAPES**: https://www.gov.br/capes
+- **Documentos de Área**: https://www.gov.br/capes/pt-br/acesso-a-informacao/acoes-e-programas/avaliacao
+
+## Regras de Desenvolvimento
+
+### Linting e Formatação
+
+**OBRIGATÓRIO**: Após QUALQUER modificação em arquivos Python (.py):
+
+1. Execute `ruff check --fix .` para corrigir problemas automaticamente
+2. Execute `ruff format .` para formatar o código
+3. Se houver erros não corrigíveis automaticamente, corrija-os antes de finalizar
+
+**Comando completo**:
+```bash
+ruff check --fix . && ruff format .
+```
+
+### Documentação de Código
+
+**OBRIGATÓRIO**: Todo código Python deve seguir estas regras de docstrings:
+
+1. **Formato**: Google Style (https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings)
+2. **Obrigatoriedade**:
+   - Todas as funções públicas devem ter docstrings
+   - Todas as classes devem ter docstrings
+   - Métodos públicos devem ter docstrings
+3. **Estrutura mínima**:
+   ```python
+   def funcao_exemplo(param1: str, param2: int) -> bool:
+       """Breve descrição em uma linha.
+
+       Descrição mais detalhada se necessário, explicando o comportamento,
+       casos especiais, etc.
+
+       Args:
+           param1: Descrição do parâmetro 1
+           param2: Descrição do parâmetro 2
+
+       Returns:
+           Descrição do que a função retorna
+
+       Raises:
+           ValueError: Quando e por que essa exceção é levantada
+       """
+       pass
+   ```
+
+### Fluxo de Trabalho
+
+Sempre que modificar código:
+1. Faça as alterações necessárias
+2. Execute ruff (check + format)
+3. Adicione/atualize docstrings se necessário
+4. Verifique se o código está funcionando
+5. Confirme que todas as regras foram seguidas antes de finalizar
+
+## Contribuindo
+
+Este projeto foi gerado automaticamente. Para modificações:
+
+1. Respeitar estrutura de dataclasses
+2. Manter compatibilidade com formato CSV/JSON
+3. Validar contra regras CAPES 2025-2028
+4. Adicionar testes para novas features
+5. Atualizar documentação
+6. **Seguir as Regras de Desenvolvimento** (seção acima)
+
+## Licença
+
+Ver arquivo [LICENSE](LICENSE)
+
+## Referências
+
+### Documentação CAPES
+
+- [Portal CAPES - Avaliação](https://www.gov.br/capes/pt-br/acesso-a-informacao/acoes-e-programas/avaliacao)
+- [Documento de Área - Computação CAPES 2025-2028](https://www.gov.br/capes/pt-br/acesso-a-informacao/acoes-e-programas/avaliacao/sobre-a-avaliacao/areas-avaliacao/sobre-as-areas-de-avaliacao/colegio-de-ciencias-exatas-tecnologicas-e-multidisciplinar/ciencia-da-computacao)
+- Documentos em PDF (obtidos durante desenvolvimento):
+  - `COMPUTACAO_DOCAREA_2025_2028.pdf`
+  - `COMPUTACAO_FICHA_2025_2028.pdf`
+  - `19052025_20250502_DocumentoReferencial_FICHA_pages_*.pdf`
+  - `13052025_antoniogomes06maiodav.pdf`
+
+### Fontes de Métricas
+
+- [Google Scholar Metrics](https://scholar.google.com/citations?view_op=top_venues) - H5-index gratuito
+- [Scopus Preview](https://www.scopus.com/sources) - CiteScore gratuito (coleta manual)
+- [Scopus API](https://dev.elsevier.com) - API oficial (requer credenciais)
+- [Web of Science](https://www.webofscience.com) - JIF (requer assinatura)
+- [OpenAlex](https://openalex.org) - Métricas abertas (não utilizadas - não oficiais)
+
+### Organizações
+
+- [Sociedade Brasileira de Computação - SBC](https://www.sbc.org.br/)
+- Rankings CE-SBC: eventos@sbc.org.br
+
+---
+
+**Gerado por**: Claude.ai (Anthropic)
+**Data**: 2026-01-26
+**Conversa Original**: https://claude.ai/share/b4c1ea23-87f3-4552-94b7-84aecb4ab3cf
