@@ -6,14 +6,19 @@ Ferramenta para coletar métricas de periódicos e conferências para avaliaçã
 ## Estrutura
 
 ```
-capes_metrics/
-├── capes_metrics.py      # Script principal
+coleta_capes/
+├── capes_metrics.py      # Script principal (orquestração e CLI)
+├── lib_aux.py            # Biblioteca auxiliar (dataclasses, funções)
+├── lib_google.py         # Scraper Google Scholar Metrics
+├── lib_scopus.py         # Cliente Scopus API (CiteScore)
+├── lib_wos.py            # Cliente Web of Science API (JIF)
 ├── requirements.txt      # Dependências Python
-├── README.md            # Este arquivo
+├── README.md             # Este arquivo
+├── CLAUDE.md             # Documentação técnica detalhada
 ├── config/
-│   ├── revistas.csv     # Lista de periódicos a consultar
-│   └── conferencias.csv # Lista de conferências a consultar
-└── output/              # Resultados gerados
+│   ├── revistas.csv      # Lista de periódicos a consultar
+│   └── conferencias.csv  # Lista de conferências a consultar
+└── output/               # Resultados gerados
 ```
 
 ## Instalação
@@ -34,13 +39,19 @@ python capes_metrics.py
 python capes_metrics.py --conferencias
 ```
 
-### Apenas revistas (coleta H5-index + template Scopus)
+### Apenas revistas (coleta H5-index + APIs opcionais)
 ```bash
 # Apenas H5-index
 python capes_metrics.py --revistas
 
 # H5-index + JIF do Web of Science
 python capes_metrics.py --revistas --wos
+
+# H5-index + CiteScore do Scopus
+python capes_metrics.py --revistas --scopus
+
+# Todas as métricas (H5 + JIF + CiteScore)
+python capes_metrics.py --revistas --wos --scopus
 ```
 
 ## Configuração
@@ -60,6 +71,22 @@ Para habilitar coleta automática de JIF:
    ```
 
 **Nota**: Free tier permite 5000 requisições/mês.
+
+### Scopus (Opcional)
+
+Para habilitar coleta automática de CiteScore:
+
+1. Obtenha chave API em: https://dev.elsevier.com/myapikey.html
+2. Adicione ao arquivo `.env`:
+   ```bash
+   SCOPUS_API_KEY=sua_chave_api_aqui
+   ```
+3. Execute com flag `--scopus`:
+   ```bash
+   python capes_metrics.py --revistas --scopus
+   ```
+
+**Nota**: Requer biblioteca `pybliometrics` (incluída em requirements.txt).
 
 ### Adicionar conferências
 
@@ -86,24 +113,22 @@ NATURE,Nature,0028-0836
 | Conferências | Google Scholar Metrics | H5-index | ✅ Sim |
 | Revistas | Google Scholar Metrics | H5-index | ✅ Sim |
 | Revistas | Web of Science API | JIF + Percentil | ✅ Opcional (--wos) |
-| Revistas | Scopus Preview | CiteScore + Percentil | ⚠️ Manual |
+| Revistas | Scopus API | CiteScore + Percentil | ✅ Opcional (--scopus) |
 
-### Para revistas (workflow híbrido)
+### Para revistas (workflow automatizado)
 
 **Automático** (executado pelo script):
 1. Coleta H5-index do Google Scholar Metrics
 2. Calcula estrato inicial baseado em H5 (`estrato_h5`)
 3. [Opcional com --wos] Coleta JIF do Web of Science Starter API
-4. Calcula `estrato_jif` e `estrato_final` (melhor métrica)
-5. Gera arquivo CSV com dados parciais
+4. [Opcional com --scopus] Coleta CiteScore do Scopus API
+5. Calcula `estrato_final` automaticamente (melhor entre H5, CiteScore e JIF)
+6. Gera arquivo CSV/JSON com todos os dados
 
-**Manual** (usuário deve fazer):
-1. Abrir arquivo CSV gerado em `output/revistas_TIMESTAMP.csv`
-2. Acessar: https://www.scopus.com/sources
-3. Buscar pelo nome ou ISSN de cada revista
-4. Anotar: **CiteScore**, **Percentile** e **Subject Area**
-5. Preencher as colunas vazias: `citescore`, `percentil`, `area_tematica`, `url_scopus`
-6. Comparar `estrato_final` com `estrato_percentil` e usar o melhor
+**Uso completo** (todas as métricas):
+```bash
+python capes_metrics.py --revistas --wos --scopus
+```
 
 ## Cálculo do Estrato CAPES
 
@@ -146,16 +171,16 @@ NATURE,Nature,0028-0836
 ## Limitações
 
 - **Google Scholar Metrics**: Pode bloquear após muitas requisições (CAPTCHA)
-- **Scopus Preview**: Requer JavaScript, não permite scraping direto
+- **Scopus API**: Requer API key e busca por ISSN (busca por nome não suportada)
 - **Web of Science**: Free tier limitado a 5000 req/mês (erro 429 se excedido)
 - **Rankings SBC**: Não incluídos automaticamente (ajuste manual necessário)
 - **Matching**: Primeira correspondência do Google Scholar pode não ser exata - validar coluna `nome_gsm`
 
 ## Segurança
 
-- **Credenciais**: Armazene `WOS_API_KEY` em arquivo `.env` (não versionado)
+- **Credenciais**: Armazene `WOS_API_KEY` e `SCOPUS_API_KEY` em arquivo `.env` (não versionado)
 - **API Keys**: Nunca commite `.env` no git (.gitignore já configurado)
-- **Logs**: API keys são mascaradas automaticamente nos logs
+- **Logs**: API keys são mascaradas automaticamente nos logs (mostra apenas últimos 4 caracteres)
 
 ## Exemplo de Saída
 
@@ -185,4 +210,4 @@ GRSL     IEEE Geoscience and...      58    A1   N/A    N/A   88.1%    A1    A1
 
 **Legenda**: E-H5 (estrato H5), E-CS (estrato CiteScore), E-JIF (estrato JIF), Final (melhor estrato)
 
-**Nota**: As colunas `CiteScore` e `Percentil` devem ser preenchidas manualmente consultando o Scopus. A coluna `JIF` é preenchida automaticamente se usar `--wos`. Estrato Final mostra a melhor classificação entre H5, CiteScore e JIF.
+**Nota**: Todas as métricas podem ser coletadas automaticamente usando `--wos` (JIF) e `--scopus` (CiteScore). Estrato Final mostra a melhor classificação entre H5, CiteScore e JIF.

@@ -12,14 +12,14 @@ O projeto foi criado através de uma conversa com Claude.ai para automatizar a c
 ❌ **Conferências**: Ajuste CE-SBC (Top10/Top20) requer consulta manual à SBC
 ✅ **Periódicos**: Coleta H5-index do Google Scholar e calcula estrato inicial
 ✅ **Periódicos**: Coleta JIF do Web of Science (opcional, via API com --wos)
-⚠️ **Periódicos**: Coleta de CiteScore/Percentil é manual (Scopus requer JavaScript)
+✅ **Periódicos**: Coleta CiteScore do Scopus (opcional, via API com --scopus)
 
 ### Lista de Verificação para Uso Completo
 
 - [x] Executar script para coletar H5-index de conferências e revistas
 - [x] (Opcional) Configurar WOS_API_KEY em .env e usar --wos para coletar JIF
+- [x] (Opcional) Configurar SCOPUS_API_KEY em .env e usar --scopus para coletar CiteScore
 - [ ] Consultar rankings CE-SBC (eventos@sbc.org.br) e aplicar ajustes +1/+2 nas conferências
-- [ ] Acessar Scopus Preview e preencher CSV de revistas com CiteScore/Percentil
 - [ ] Validar resultados manualmente (matching pode ser imperfeito)
 
 ## Contexto e Objetivo
@@ -31,7 +31,7 @@ A CAPES utiliza métricas bibliométricas para classificar periódicos e confer�
 - **Conferências**: H5-index do Google Scholar Metrics (automático)
 - **Periódicos**:
   - H5-index do Google Scholar Metrics (automático)
-  - CiteScore (Scopus) - coleta manual via web
+  - CiteScore (Scopus) - coleta automática via API (opcional com --scopus)
   - JIF (Web of Science) - coleta automática via API (opcional com --wos)
   - **Regra**: Usar o **MAIOR** percentil entre CiteScore e JIF
 
@@ -84,14 +84,18 @@ A4: >= 50.0%  |  A8: < 12.5%
 - **JIF** (Journal Impact Factor, Web of Science) - percentil na categoria
 - **Regra**: Usar o **MAIOR** percentil entre as duas fontes
 
-> **Nota**: O script atual coleta apenas CiteScore (Scopus). Para incluir JIF, é necessário acesso ao Web of Science.
+> **Nota**: O script suporta coleta automática de CiteScore (--scopus) e JIF (--wos). Ambos requerem API keys configuradas no arquivo .env.
 
 ## Estrutura do Projeto
 
 ```
 coleta_capes/
 │
-├── capes_metrics.py          # Script principal (~500 linhas)
+├── capes_metrics.py          # Script principal (orquestração e CLI)
+├── lib_aux.py                # Biblioteca auxiliar (dataclasses, funções de estrato)
+├── lib_google.py             # Scraper Google Scholar Metrics (H5-index)
+├── lib_scopus.py             # Cliente Scopus API (CiteScore)
+├── lib_wos.py                # Cliente Web of Science API (JIF)
 ├── requirements.txt          # Dependências Python
 ├── README.md                 # Documentação de uso
 ├── CLAUDE.md                 # Esta documentação técnica
@@ -111,7 +115,28 @@ coleta_capes/
 
 ## Arquitetura e Componentes
 
-### 1. Estruturas de Dados
+O projeto foi refatorado em módulos para melhor organização e manutenibilidade:
+
+### Módulos do Projeto
+
+| Módulo | Arquivo | Responsabilidade |
+|--------|---------|-----------------|
+| Auxiliar | `lib_aux.py` | Dataclasses, funções de cálculo de estrato, constantes |
+| Google Scholar | `lib_google.py` | Scraper para H5-index |
+| Scopus | `lib_scopus.py` | Cliente API Scopus (CiteScore) |
+| Web of Science | `lib_wos.py` | Cliente API WoS (JIF) |
+| Principal | `capes_metrics.py` | CLI, orquestração, I/O |
+
+### 1. Módulo Auxiliar (`lib_aux.py`)
+
+Contém estruturas de dados e funções compartilhadas.
+
+#### Constantes
+```python
+DELAY_MIN = 5   # Delay mínimo entre requisições (segundos)
+DELAY_MAX = 10  # Delay máximo entre requisições (segundos)
+HEADERS = {...}  # User-Agent e headers HTTP
+```
 
 #### `ConferenciaMetrics` (dataclass)
 ```python
@@ -143,45 +168,36 @@ class RevistaMetrics:
     percentil: Optional[float]          # Percentil (0-100, Scopus)
     area_tematica: Optional[str]        # Área do Scopus
     estrato_percentil: Optional[str]    # A1-A8 baseado em percentil
+    jif: Optional[float]                # Journal Impact Factor (WoS)
+    jif_percentil: Optional[float]      # Percentil JIF (0-100, WoS)
+    categoria_wos: Optional[str]        # Categoria WoS
+    estrato_jif: Optional[str]          # A1-A8 baseado em JIF
+    estrato_final: Optional[str]        # Melhor estrato entre todos
     url_gsm: Optional[str]              # URL do Google Scholar
     url_scopus: Optional[str]           # URL do Scopus
+    url_wos: Optional[str]              # URL do Web of Science
     erro: Optional[str]                 # Mensagem de erro
     data_coleta: Optional[str]          # Timestamp ISO
 ```
 
-### 2. Módulos Principais
-
-#### Configuração Global
-- **`BASE_DIR`**: Diretório raiz do projeto
-- **`CONFIG_DIR`**: Pasta com listas de conferências/revistas
-- **`OUTPUT_DIR`**: Pasta de saída dos resultados
-- **`DELAY_MIN/MAX`**: Controle de rate limiting (5-10s)
-- **`HEADERS`**: User-Agent para requisições HTTP
-
-#### Cálculo de Estratos
+#### Funções de Cálculo de Estrato
 ```python
 calcular_estrato_conferencia(h5_index: int) -> str
 calcular_estrato_revista(percentil: float) -> str
+calcular_estrato_final(estrato_h5, estrato_percentil, estrato_jif) -> str
 ```
 Implementam as regras de estratificação CAPES com validação de entrada.
 
-#### Carregamento de Configuração
-```python
-carregar_conferencias(filepath: Path) -> List[Dict]
-carregar_revistas(filepath: Path) -> List[Dict]
-```
-- Lê arquivos CSV com formato customizado
-- Ignora linhas em branco e comentários (#)
-- Valida formato esperado
+### 2. Módulo Google Scholar (`lib_google.py`)
 
-#### Scraping de Dados
-
-##### `GoogleScholarMetricsScraper`
-**Responsabilidade**: Coleta automática de H5-index
+#### `GoogleScholarMetricsScraper`
+**Responsabilidade**: Coleta automática de H5-index de conferências e revistas
 
 **Métodos**:
 - `_delay()`: Implementa rate limiting randomizado
-- `buscar_conferencia(sigla, nome_completo)`: Busca e extrai métricas
+- `_buscar_venue_gsm(query)`: Método genérico de busca no GSM
+- `buscar_conferencia(sigla, nome_completo)`: Busca métricas de conferência
+- `buscar_revista(sigla, nome_completo, issn)`: Busca métricas de revista
 
 **Fluxo**:
 1. Aguarda delay aleatório (anti-bloqueio)
@@ -192,13 +208,61 @@ carregar_revistas(filepath: Path) -> List[Dict]
 6. Extrai primeira linha da tabela de resultados
 7. Captura H5-index, H5-median e nome GSM
 8. Calcula estrato CAPES
-9. Retorna objeto `ConferenciaMetrics`
+9. Retorna objeto `ConferenciaMetrics` ou `RevistaMetrics`
 
 **Tratamento de Erros**:
 - Bloqueio CAPTCHA
 - Timeout de rede
 - Ausência de resultados
 - Parsing inválido
+
+### 3. Módulo Scopus (`lib_scopus.py`)
+
+#### `ScopusAPIClient`
+**Responsabilidade**: Coleta de CiteScore e percentil via Scopus API (pybliometrics)
+
+**Métodos**:
+- `_delay()`: Rate limiting para API
+- `_mask_api_key(key)`: Mascara chave para logs
+- `buscar_revista_scopus(issn, nome)`: Busca métricas por ISSN
+
+**Requisitos**:
+- API key de https://dev.elsevier.com/myapikey.html
+- Biblioteca `pybliometrics` instalada
+
+**Retorno**: `(citescore, percentil, area_tematica, url_scopus, erro)`
+
+### 4. Módulo Web of Science (`lib_wos.py`)
+
+#### `WebOfScienceAPIClient`
+**Responsabilidade**: Coleta de JIF e percentil via WoS Starter API
+
+**Métodos**:
+- `_delay()`: Rate limiting para API (5000 req/mês)
+- `_mask_api_key(key)`: Mascara chave para logs
+- `buscar_revista_wos(issn, nome)`: Busca JIF por ISSN
+
+**Requisitos**:
+- API key de https://developer.clarivate.com/portal
+- Free tier: 5000 requisições/mês
+
+**Retorno**: `(jif, jif_percentil, categoria_wos, url_wos, erro)`
+
+### 5. Script Principal (`capes_metrics.py`)
+
+#### Configuração Global
+- **`BASE_DIR`**: Diretório raiz do projeto
+- **`CONFIG_DIR`**: Pasta com listas de conferências/revistas
+- **`OUTPUT_DIR`**: Pasta de saída dos resultados
+
+#### Carregamento de Configuração
+```python
+carregar_conferencias(filepath: Path) -> List[Dict]
+carregar_revistas(filepath: Path) -> List[Dict]
+```
+- Lê arquivos CSV com formato customizado
+- Ignora linhas em branco e comentários (#)
+- Valida formato esperado
 
 #### Saída de Resultados
 ```python
@@ -212,19 +276,28 @@ imprimir_tabela_revistas(resultados)
 - JSON indentado (UTF-8)
 - Tabelas formatadas no console
 
-### 3. CLI (Command-Line Interface)
+### 6. CLI (Command-Line Interface)
 
 Implementado com `argparse`:
 
 ```bash
-# Coleta tudo (conferências + template revistas)
+# Coleta tudo (conferências + revistas com H5-index)
 python capes_metrics.py
 
 # Apenas conferências
 python capes_metrics.py --conferencias
 
-# Apenas revistas (gera template)
+# Apenas revistas (H5-index apenas)
 python capes_metrics.py --revistas
+
+# Revistas com JIF do Web of Science (requer WOS_API_KEY em .env)
+python capes_metrics.py --revistas --wos
+
+# Revistas com CiteScore do Scopus (requer SCOPUS_API_KEY em .env)
+python capes_metrics.py --revistas --scopus
+
+# Revistas com todas as métricas (H5 + JIF + CiteScore)
+python capes_metrics.py --revistas --wos --scopus
 
 # Customizar diretórios
 python capes_metrics.py --output ./resultados --config ./minhas_listas
@@ -321,45 +394,50 @@ Exemplo 3: Workshop Regional
 
 > **Importante**: O script atual calcula apenas o estrato da **Etapa 1** (H5-index). A aplicação dos ajustes CE-SBC e critérios de tradição deve ser feita manualmente.
 
-### Coleta de Periódicos (Semi-automática)
+### Coleta de Periódicos (Automática)
 
 **Coleta Automática**:
-- H5-index do Google Scholar Metrics
+- H5-index do Google Scholar Metrics (sempre)
+- CiteScore do Scopus (se flag --scopus ativada e SCOPUS_API_KEY configurada)
 - JIF do Web of Science (se flag --wos ativada e WOS_API_KEY configurada)
 
-**Coleta Manual**:
-- CiteScore do Scopus Preview (JavaScript requer acesso manual)
+**Workflow automatizado**:
 
-**Workflow híbrido**:
+1. **Configurar APIs (Opcional)**
 
-1. **Configurar Web of Science (Opcional)**
+   **Web of Science**:
    - Obter API key em: https://developer.clarivate.com/portal
-   - Criar arquivo `.env` na raiz do projeto:
-   ```bash
-   WOS_API_KEY=sua_chave_aqui
-   ```
    - Free tier: 5000 requisições/mês
+
+   **Scopus**:
+   - Obter API key em: https://dev.elsevier.com/myapikey.html
+   - Requer conta institucional ou registro gratuito
+
+   Criar arquivo `.env` na raiz do projeto:
+   ```bash
+   WOS_API_KEY=sua_chave_wos_aqui
+   SCOPUS_API_KEY=sua_chave_scopus_aqui
+   ```
 
 2. **Executar Coleta Automática**
    ```bash
    # Apenas H5-index
    python capes_metrics.py --revistas
 
-   # H5-index + JIF (requer .env com WOS_API_KEY)
+   # H5-index + JIF (requer WOS_API_KEY)
    python capes_metrics.py --revistas --wos
+
+   # H5-index + CiteScore (requer SCOPUS_API_KEY)
+   python capes_metrics.py --revistas --scopus
+
+   # Todas as métricas (requer ambas as keys)
+   python capes_metrics.py --revistas --wos --scopus
    ```
 
-3. **Etapa Manual - CiteScore** (usuário)
-   - Abre o arquivo CSV gerado
-   - Acessa https://www.scopus.com/sources
-   - Busca cada revista por nome/ISSN
-   - Anota CiteScore, Percentil e Subject Area
-   - Preenche as colunas vazias no CSV: `citescore`, `percentil`, `area_tematica`, `url_scopus`
-
-4. **Cálculo do Estrato Final**
-   - Compara `estrato_h5` com `estrato_percentil` (após preencher CiteScore)
-   - Compara com `estrato_wos` (se disponível)
-   - Usa o **melhor** estrato entre as três métricas
+3. **Cálculo do Estrato Final**
+   - Calcula automaticamente o melhor estrato entre H5, CiteScore e JIF
+   - Exibe na coluna `estrato_final` do CSV/JSON
+   - Usa a regra CAPES: maior percentil = melhor classificação
 
 **Formato do CSV de Saída**:
 ```csv
@@ -375,6 +453,7 @@ TGRS,IEEE Trans...,0196-2892,IEEE Transactions...,85,105,A1,[PREENCHER],[PREENCH
 requests>=2.28.0        # HTTP client
 beautifulsoup4>=4.11.0  # HTML parsing
 python-dotenv>=1.0.0    # Environment variables
+pybliometrics>=3.5.0    # Scopus API client (para --scopus)
 ```
 
 **Bibliotecas padrão**:
@@ -394,8 +473,8 @@ python-dotenv>=1.0.0    # Environment variables
 | Fonte | URL Base | Métrica | Acesso |
 |-------|----------|---------|--------|
 | Google Scholar Metrics | https://scholar.google.com | H5-index | HTTP GET (HTML) |
-| Scopus Preview | https://www.scopus.com/sources | CiteScore + Percentil | JavaScript (manual) |
-| Web of Science Starter API | https://api.clarivate.com/api/wos-starter | JIF + Percentil | REST API (opcional) |
+| Scopus API | https://api.elsevier.com | CiteScore + Percentil | REST API (--scopus) |
+| Web of Science Starter API | https://api.clarivate.com/api/wos-starter | JIF + Percentil | REST API (--wos) |
 | CE-SBC Rankings | eventos@sbc.org.br | Top10/Top20/Relevante | Consulta por email |
 
 #### Fontes Descartadas
@@ -579,10 +658,10 @@ TGRS,IEEE Transactions on Geoscience and Remote Sensing,0196-2892,IEEE Transacti
    - Pode não ser exatamente a conferência ou revista desejada
    - Solução: Validação manual dos resultados (verificar coluna `nome_gsm`)
 
-3. **Scopus Não Automatizado**
-   - Requer JavaScript para renderização
-   - Coleta manual necessária
-   - Alternativas futuras: Selenium/Playwright, API oficial (paga)
+3. **Scopus API**
+   - Requer API key de https://dev.elsevier.com
+   - Busca por ISSN (nome não suportado)
+   - Alternativa: coleta manual via https://www.scopus.com/sources
 
 4. **WoS API Free Tier**
    - Limite: 5000 requisições/mês
@@ -684,12 +763,11 @@ elif percentil >= 75.0: return "A2"
 ### Médio Prazo
 
 - [ ] Implementar cálculo de ajuste CE-SBC no script
-- [ ] Adicionar suporte a Scopus API (requer credenciais institucionais)
+- [x] Adicionar suporte a Scopus API (via pybliometrics)
 - [ ] Cache local de resultados (SQLite/JSON)
 - [ ] Comparação com coletas anteriores (diff)
-- [ ] Scraping Scopus com Selenium/Playwright
 - [ ] Interface web (Flask/FastAPI + dashboard)
-- [ ] Adicionar suporte a Web of Science (JIF)
+- [x] Adicionar suporte a Web of Science (JIF)
 
 ### Longo Prazo
 
@@ -702,6 +780,39 @@ elif percentil >= 75.0: return "A2"
 - [ ] Deploy online (GitHub Pages, Vercel, etc.)
 
 ## Histórico de Desenvolvimento
+
+### Versão 1.3 (2026-01-27)
+
+**Atualização**: Refatoração modular e integração com Scopus API
+
+#### Melhorias Implementadas
+
+- ✅ Refatoração do código em módulos separados para melhor organização
+- ✅ Novo módulo `lib_aux.py` com dataclasses e funções de cálculo
+- ✅ Novo módulo `lib_google.py` com scraper do Google Scholar
+- ✅ Novo módulo `lib_scopus.py` com cliente Scopus API via pybliometrics
+- ✅ Novo módulo `lib_wos.py` com cliente Web of Science API
+- ✅ Coleta automática de CiteScore via Scopus API (opcional com --scopus)
+- ✅ Headers de documentação em todos os arquivos Python
+- ✅ Documentação atualizada (CLAUDE.md e README.md)
+
+#### Nova Estrutura de Arquivos
+
+```
+capes_metrics.py    # Script principal (orquestração)
+lib_aux.py          # Dataclasses e funções auxiliares
+lib_google.py       # Scraper Google Scholar Metrics
+lib_scopus.py       # Cliente Scopus API
+lib_wos.py          # Cliente Web of Science API
+```
+
+#### Workflow Atualizado
+
+Agora todas as métricas podem ser coletadas automaticamente:
+1. H5-index automático (Google Scholar)
+2. JIF automático (WoS API, opcional com --wos)
+3. CiteScore automático (Scopus API, opcional com --scopus)
+4. Estrato final calculado automaticamente (melhor entre três)
 
 ### Versão 1.2 (2026-01-26)
 
