@@ -32,12 +32,10 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import quote_plus
 
+import pybliometrics
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-
-# Scopus API (pybliometrics)
-import pybliometrics
 from pybliometrics.scopus import SerialTitleISSN
 
 # =============================================================================
@@ -455,7 +453,7 @@ class WebOfScienceAPIClient:
         session: Sessão HTTP reutilizável
     """
 
-    BASE_URL = "https://api.clarivate.com/api/wos-starter"
+    BASE_URL = "https://api.clarivate.com/apis/wos-starter/v1"
 
     def __init__(self, api_key: str, timeout: int = 30):
         """
@@ -537,17 +535,21 @@ class WebOfScienceAPIClient:
         try:
             self._delay()
 
-            # Monta query (prioriza ISSN)
-            if issn and issn.strip():
-                query_param = issn.strip()
-                search_type = "issn"
-            else:
-                query_param = nome
-                search_type = "title"
+            # API WoS Starter só aceita busca por ISSN
+            if not issn or not issn.strip():
+                return (
+                    None,
+                    None,
+                    None,
+                    None,
+                    f"ISSN obrigatório para busca WoS (revista: {nome})",
+                )
 
-            # Endpoint: /journals
+            issn_clean = issn.strip()
+
+            # Endpoint: /journals (parâmetro: issn)
             url = f"{self.BASE_URL}/journals"
-            params = {"q": query_param, "limit": 1}  # Pega apenas primeiro resultado
+            params = {"issn": issn_clean}
 
             response = self.session.get(url, params=params, timeout=self.timeout)
 
@@ -575,7 +577,7 @@ class WebOfScienceAPIClient:
                     None,
                     None,
                     None,
-                    f"Revista não encontrada no WoS ({search_type}: {query_param})",
+                    f"Revista não encontrada no WoS (ISSN: {issn_clean})",
                 )
 
             response.raise_for_status()
@@ -590,7 +592,7 @@ class WebOfScienceAPIClient:
                     None,
                     None,
                     None,
-                    f"Nenhum resultado no WoS para {search_type}: {query_param}",
+                    f"Nenhum resultado no WoS (ISSN: {issn_clean})",
                 )
 
             journal = data["data"][0]
