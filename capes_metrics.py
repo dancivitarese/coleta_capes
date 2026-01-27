@@ -36,6 +36,10 @@ import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
+# Scopus API (pybliometrics)
+import pybliometrics
+from pybliometrics.scopus import SerialTitleISSN
+
 # =============================================================================
 # CONFIGURAÇÕES
 # =============================================================================
@@ -313,7 +317,10 @@ class GoogleScholarMetricsScraper:
             response.raise_for_status()
 
             # Verifica bloqueio (CAPTCHA)
-            if "unusual traffic" in response.text.lower() or "captcha" in response.text.lower():
+            if (
+                "unusual traffic" in response.text.lower()
+                or "captcha" in response.text.lower()
+            ):
                 return (
                     None,
                     None,
@@ -378,7 +385,9 @@ class GoogleScholarMetricsScraper:
         except Exception as e:
             return None, None, None, None, f"Erro: {str(e)}"
 
-    def buscar_conferencia(self, sigla: str, nome_completo: Optional[str] = None) -> ConferenciaMetrics:
+    def buscar_conferencia(
+        self, sigla: str, nome_completo: Optional[str] = None
+    ) -> ConferenciaMetrics:
         """Busca métricas de uma conferência no Google Scholar Metrics."""
 
         resultado = ConferenciaMetrics(
@@ -400,7 +409,9 @@ class GoogleScholarMetricsScraper:
 
         return resultado
 
-    def buscar_revista(self, sigla: str, nome_completo: str, issn: Optional[str] = None) -> RevistaMetrics:
+    def buscar_revista(
+        self, sigla: str, nome_completo: str, issn: Optional[str] = None
+    ) -> RevistaMetrics:
         """Busca métricas de uma revista no Google Scholar Metrics."""
 
         resultado = RevistaMetrics(
@@ -411,7 +422,9 @@ class GoogleScholarMetricsScraper:
         )
 
         # Tenta buscar pelo nome completo
-        nome_gsm, h5_index, h5_median, url_gsm, erro = self._buscar_venue_gsm(nome_completo)
+        nome_gsm, h5_index, h5_median, url_gsm, erro = self._buscar_venue_gsm(
+            nome_completo
+        )
 
         resultado.nome_gsm = nome_gsm
         resultado.h5_index = h5_index
@@ -623,6 +636,168 @@ class WebOfScienceAPIClient:
 
 
 # =============================================================================
+# SCOPUS API CLIENT (PYBLIOMETRICS)
+# =============================================================================
+
+
+class ScopusAPIClient:
+    """
+    Cliente para Scopus API usando biblioteca pybliometrics.
+
+    Busca CiteScore e percentil de periódicos por ISSN.
+    Requer API key de https://dev.elsevier.com/myapikey.html
+
+    Attributes:
+        api_key: Chave de API Scopus
+    """
+
+    def __init__(self, api_key: str, timeout: int = 30):
+        """
+        Inicializa o cliente Scopus API.
+
+        Args:
+            api_key: Chave de API obtida em dev.elsevier.com
+            timeout: Timeout em segundos para requisições (padrão: 30s)
+
+        Raises:
+            ValueError: Se api_key estiver vazio
+        """
+        if not api_key or not api_key.strip():
+            raise ValueError("Scopus API key não pode estar vazia")
+
+        self.api_key = api_key
+        self.timeout = timeout
+
+        # Initialize pybliometrics with API key
+        pybliometrics.init(keys=[api_key])
+
+    def _delay(self):
+        """
+        Implementa rate limiting para respeitar limites da API.
+
+        Scopus API tem limites generosos mas delay conservador evita problemas.
+        """
+        delay = random.uniform(DELAY_MIN, DELAY_MAX)
+        print(f"    ⏳ Aguardando {delay:.1f}s...")
+        time.sleep(delay)
+
+    def _mask_api_key(self, key: str) -> str:
+        """
+        Mascara chave API para logs (mostra apenas últimos 4 caracteres).
+
+        Args:
+            key: Chave API completa
+
+        Returns:
+            Chave mascarada (ex: "****abc123")
+        """
+        if len(key) <= 8:
+            return "****"
+        return "*" * (len(key) - 4) + key[-4:]
+
+    def buscar_revista_scopus(self, issn: Optional[str], nome: str) -> tuple:
+        """
+        Busca métricas de revista no Scopus (CiteScore e percentil).
+
+        Args:
+            issn: ISSN da revista (formato: XXXX-XXXX)
+            nome: Nome completo da revista (usado para mensagens de erro)
+
+        Returns:
+            Tupla (citescore, percentil, area_tematica, url_scopus, erro)
+            onde:
+                citescore: CiteScore atual (float)
+                percentil: Percentil na melhor categoria (0-100)
+                area_tematica: Código ASJC da área temática
+                url_scopus: URL da fonte no Scopus
+                erro: Mensagem de erro (None se sucesso)
+        """
+        try:
+            self._delay()
+
+            if not issn or not issn.strip():
+                return (
+                    None,
+                    None,
+                    None,
+                    None,
+                    f"ISSN não fornecido para '{nome}'. Scopus API requer ISSN.",
+                )
+
+            issn_clean = issn.strip()
+
+            # Get journal data with CITESCORE view
+            serial = SerialTitleISSN(issn_clean, view="CITESCORE")
+
+            # Get CiteScore year info
+            cs_info = serial.citescoreyearinfolist
+            if not cs_info:
+                return (
+                    None,
+                    None,
+                    None,
+                    None,
+                    f"Nenhum dado CiteScore disponível para ISSN: {issn_clean}",
+                )
+
+            # Get most recent year's data (last entry)
+            latest = cs_info[-1]
+            citescore = float(latest.citescore) if latest.citescore else None
+
+            # Extract percentile from rank (best category)
+            percentile = None
+            area = None
+            if latest.rank:
+                # rank is list of namedtuples (subjectcode, rank, percentile)
+                # Get highest percentile across all categories
+                best_rank = max(
+                    latest.rank,
+                    key=lambda r: float(r.percentile) if r.percentile else 0,
+                )
+                percentile = (
+                    float(best_rank.percentile) if best_rank.percentile else None
+                )
+                area = best_rank.subjectcode
+
+            # Build Scopus URL
+            url_scopus = None
+            if hasattr(serial, "source_id") and serial.source_id:
+                url_scopus = f"https://www.scopus.com/sourceid/{serial.source_id}"
+
+            return (citescore, percentile, area, url_scopus, None)
+
+        except Exception as e:
+            error_msg = str(e)
+            # Check for common error patterns
+            if "401" in error_msg or "Unauthorized" in error_msg:
+                masked = self._mask_api_key(self.api_key)
+                return (
+                    None,
+                    None,
+                    None,
+                    None,
+                    f"Autenticação falhou (chave: {masked}). Verifique SCOPUS_API_KEY",
+                )
+            elif "404" in error_msg or "not found" in error_msg.lower():
+                return (
+                    None,
+                    None,
+                    None,
+                    None,
+                    f"Revista não encontrada no Scopus (ISSN: {issn})",
+                )
+            elif "429" in error_msg or "rate" in error_msg.lower():
+                return (
+                    None,
+                    None,
+                    None,
+                    None,
+                    "Rate limit excedido. Aguarde alguns minutos",
+                )
+            return (None, None, None, None, f"Erro Scopus: {error_msg}")
+
+
+# =============================================================================
 # SAÍDA DE RESULTADOS
 # =============================================================================
 
@@ -673,8 +848,12 @@ def imprimir_tabela_revistas(resultados: List[RevistaMetrics]):
     print(f"\n{'=' * 120}")
     print(" REVISTAS - Métricas: Google Scholar (H5) + Scopus (CiteScore) + WoS (JIF)")
     print(f"{'=' * 120}")
-    print(f"{'Sigla':<8} {'Nome':<25} {'H5':>6} {'E-H5':>5} {'CS':>6} {'E-CS':>5} {'JIF':>6} {'E-JIF':>6} {'Final':>6}")
-    print(f"{'-' * 8} {'-' * 25} {'-' * 6} {'-' * 5} {'-' * 6} {'-' * 5} {'-' * 6} {'-' * 6} {'-' * 6}")
+    print(
+        f"{'Sigla':<8} {'Nome':<25} {'H5':>6} {'E-H5':>5} {'CS':>6} {'E-CS':>5} {'JIF':>6} {'E-JIF':>6} {'Final':>6}"
+    )
+    print(
+        f"{'-' * 8} {'-' * 25} {'-' * 6} {'-' * 5} {'-' * 6} {'-' * 5} {'-' * 6} {'-' * 6} {'-' * 6}"
+    )
 
     for r in resultados:
         nome = (r.nome_gsm or r.nome_completo or r.sigla)[:25]
@@ -701,7 +880,9 @@ def imprimir_tabela_revistas(resultados: List[RevistaMetrics]):
     print()
 
     # Add legend
-    print("Legenda: E-H5 (estrato H5), E-CS (estrato CiteScore), E-JIF (estrato JIF), Final (melhor estrato)")
+    print(
+        "Legenda: E-H5 (estrato H5), E-CS (estrato CiteScore), E-JIF (estrato JIF), Final (melhor estrato)"
+    )
 
 
 # =============================================================================
@@ -713,8 +894,12 @@ def main():
     # Load environment variables from .env file
     load_dotenv()
 
-    parser = argparse.ArgumentParser(description="Coleta métricas CAPES de periódicos e conferências")
-    parser.add_argument("--conferencias", action="store_true", help="Coleta apenas conferências")
+    parser = argparse.ArgumentParser(
+        description="Coleta métricas CAPES de periódicos e conferências"
+    )
+    parser.add_argument(
+        "--conferencias", action="store_true", help="Coleta apenas conferências"
+    )
     parser.add_argument(
         "--revistas",
         action="store_true",
@@ -725,8 +910,17 @@ def main():
         action="store_true",
         help="Inclui coleta de JIF do Web of Science (requer WOS_API_KEY em .env)",
     )
-    parser.add_argument("--output", type=Path, default=OUTPUT_DIR, help="Diretório de saída")
-    parser.add_argument("--config", type=Path, default=CONFIG_DIR, help="Diretório de configuração")
+    parser.add_argument(
+        "--scopus",
+        action="store_true",
+        help="Inclui coleta de CiteScore do Scopus (requer SCOPUS_API_KEY em .env)",
+    )
+    parser.add_argument(
+        "--output", type=Path, default=OUTPUT_DIR, help="Diretório de saída"
+    )
+    parser.add_argument(
+        "--config", type=Path, default=CONFIG_DIR, help="Diretório de configuração"
+    )
 
     args = parser.parse_args()
 
@@ -757,6 +951,24 @@ def main():
             print("   Configure WOS_API_KEY no arquivo .env para habilitar WoS")
 
     # -------------------------------------------------------------------------
+    # SCOPUS SETUP (OPTIONAL)
+    # -------------------------------------------------------------------------
+    scopus_client = None
+    if args.scopus:
+        scopus_api_key = os.getenv("SCOPUS_API_KEY")
+        if scopus_api_key:
+            try:
+                scopus_client = ScopusAPIClient(scopus_api_key)
+                print("✅ Scopus API ativado")
+            except ValueError as e:
+                print(f"⚠️  Erro ao inicializar Scopus client: {e}")
+                print("   Continuando sem coleta de CiteScore...")
+        else:
+            print("⚠️  Flag --scopus ativada mas SCOPUS_API_KEY não encontrada em .env")
+            print("   Continuando sem coleta de CiteScore...")
+            print("   Configure SCOPUS_API_KEY no arquivo .env para habilitar Scopus")
+
+    # -------------------------------------------------------------------------
     # CONFERÊNCIAS
     # -------------------------------------------------------------------------
     if coletar_tudo or args.conferencias:
@@ -771,7 +983,9 @@ def main():
 
             for i, conf in enumerate(conferencias, 1):
                 print(f"\n[{i}/{len(conferencias)}] {conf['sigla']}")
-                resultado = scraper.buscar_conferencia(conf["sigla"], conf.get("nome_completo"))
+                resultado = scraper.buscar_conferencia(
+                    conf["sigla"], conf.get("nome_completo")
+                )
                 resultados_conf.append(resultado)
 
                 if resultado.erro:
@@ -816,32 +1030,68 @@ def main():
                 print(f"\n[{i}/{len(revistas)}] {rev['sigla']}")
 
                 # 1. Coleta H5-index (Google Scholar)
-                resultado = scraper.buscar_revista(rev["sigla"], rev["nome_completo"], rev.get("issn"))
+                resultado = scraper.buscar_revista(
+                    rev["sigla"], rev["nome_completo"], rev.get("issn")
+                )
 
                 if resultado.erro:
                     print(f"    ⚠️  GSM: {resultado.erro}")
                 else:
-                    print(f"    ✓ GSM: H5={resultado.h5_index} → {resultado.estrato_h5}")
+                    print(
+                        f"    ✓ GSM: H5={resultado.h5_index} → {resultado.estrato_h5}"
+                    )
 
                 # 2. Coleta JIF (Web of Science) se --wos ativado
                 if wos_client:
                     print("    🔍 Consultando WoS para JIF...")
-                    jif, jif_pct, cat_wos, url_wos, erro_wos = wos_client.buscar_revista_wos(
-                        resultado.issn, resultado.nome_completo
+                    jif, jif_pct, cat_wos, url_wos, erro_wos = (
+                        wos_client.buscar_revista_wos(
+                            resultado.issn, resultado.nome_completo
+                        )
                     )
 
                     resultado.jif = jif
                     resultado.jif_percentil = jif_pct
                     resultado.categoria_wos = cat_wos
                     resultado.url_wos = url_wos
-                    resultado.estrato_jif = calcular_estrato_revista(jif_pct) if jif_pct is not None else None
+                    resultado.estrato_jif = (
+                        calcular_estrato_revista(jif_pct)
+                        if jif_pct is not None
+                        else None
+                    )
 
                     if erro_wos:
                         print(f"    ⚠️  WoS: {erro_wos}")
                     else:
-                        print(f"    ✓ WoS: JIF={jif} (Pct={jif_pct}%) → {resultado.estrato_jif}")
+                        print(
+                            f"    ✓ WoS: JIF={jif} (Pct={jif_pct}%) → {resultado.estrato_jif}"
+                        )
 
-                # 3. Calcula estrato final (melhor entre H5, CiteScore, JIF)
+                # 3. Coleta CiteScore (Scopus) se --scopus ativado
+                if scopus_client:
+                    print("    🔍 Consultando Scopus para CiteScore...")
+                    cs, pct, area, url_scopus, erro_scopus = (
+                        scopus_client.buscar_revista_scopus(
+                            resultado.issn, resultado.nome_completo
+                        )
+                    )
+
+                    resultado.citescore = cs
+                    resultado.percentil = pct
+                    resultado.area_tematica = area
+                    resultado.url_scopus = url_scopus
+                    resultado.estrato_percentil = (
+                        calcular_estrato_revista(pct) if pct is not None else None
+                    )
+
+                    if erro_scopus:
+                        print(f"    ⚠️  Scopus: {erro_scopus}")
+                    else:
+                        print(
+                            f"    ✓ Scopus: CS={cs} (Pct={pct}%) → {resultado.estrato_percentil}"
+                        )
+
+                # 4. Calcula estrato final (melhor entre H5, CiteScore, JIF)
                 resultado.estrato_final = calcular_estrato_final(
                     resultado.estrato_h5,
                     resultado.estrato_percentil,
@@ -882,11 +1132,12 @@ def main():
 
             imprimir_tabela_revistas(resultados_rev)
 
-            # Gera também template Scopus para preenchimento manual
-            print("\n" + "=" * 75)
-            print(" SCOPUS - Coleta Manual Necessária")
-            print("=" * 75)
-            print("""
+            # Mostra instruções de coleta manual do Scopus apenas se --scopus não foi usado
+            if not scopus_client:
+                print("\n" + "=" * 75)
+                print(" SCOPUS - Coleta Manual Necessária")
+                print("=" * 75)
+                print("""
 ⚠️  O Scopus Preview requer JavaScript e não permite scraping direto.
 
 Para obter CiteScore e Percentil das revistas:
@@ -896,15 +1147,23 @@ Para obter CiteScore e Percentil das revistas:
 3. Anote: CiteScore, Percentile, Subject Area
 4. Preencha as colunas no arquivo CSV gerado acima
 
+💡 DICA: Use --scopus para coleta automática via API (requer SCOPUS_API_KEY em .env)
+
 Revistas para consultar:
 """)
-            for r in revistas:
-                issn_info = f" (ISSN: {r['issn']})" if r.get("issn") else ""
-                print(f"   • {r['nome_completo']}{issn_info}")
+                for r in revistas:
+                    issn_info = f" (ISSN: {r['issn']})" if r.get("issn") else ""
+                    print(f"   • {r['nome_completo']}{issn_info}")
 
-            print(f"\n📝 Arquivo para preencher: {args.output / f'revistas_{timestamp}.csv'}")
-            print("   Preencha as colunas 'citescore', 'percentil' e 'area_tematica' com dados do Scopus.")
-            print("   A coluna 'estrato_percentil' será calculada automaticamente após preencher.")
+                print(
+                    f"\n📝 Arquivo para preencher: {args.output / f'revistas_{timestamp}.csv'}"
+                )
+                print(
+                    "   Preencha as colunas 'citescore', 'percentil' e 'area_tematica' com dados do Scopus."
+                )
+                print(
+                    "   A coluna 'estrato_percentil' será calculada automaticamente após preencher."
+                )
 
     # -------------------------------------------------------------------------
     # RESUMO
