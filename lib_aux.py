@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 
-DELAY_MIN = 5
-DELAY_MAX = 10
+DELAY_MIN = 0
+DELAY_MAX = 3
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -50,6 +50,7 @@ class RevistaMetrics:
     sigla: str
     nome_completo: str
     issn: Optional[str] = None
+    qualis_2020: Optional[str] = None
     nome_gsm: Optional[str] = None
     h5_index: Optional[int] = None
     h5_median: Optional[int] = None

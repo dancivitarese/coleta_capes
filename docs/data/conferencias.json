@@ -1,0 +1,68 @@
+[
+  {
+    "sigla": "NeurIPS",
+    "nome_completo": "Neural Information Processing Systems",
+    "nome_gsm": "Neural Information Processing Systems",
+    "h5_index": 371,
+    "h5_median": 637,
+    "estrato_capes": "A1",
+    "url_fonte": "https://scholar.google.com/citations?hl=en&view_op=list_hcore&venue=6SgK_Z8h2_wJ.2025",
+    "erro": null,
+    "data_coleta": "2026-01-28T10:38:06.200938"
+  },
+  {
+    "sigla": "AAAI",
+    "nome_completo": "AAAI Conference on Artificial Intelligence",
+    "nome_gsm": "AAAI Conference on Artificial Intelligence",
+    "h5_index": 232,
+    "h5_median": 358,
+    "estrato_capes": "A1",
+    "url_fonte": "https://scholar.google.com/citations?hl=en&view_op=list_hcore&venue=PV9sQN5dnPsJ.2025",
+    "erro": null,
+    "data_coleta": "2026-01-28T10:38:13.306969"
+  },
+  {
+    "sigla": "ICML",
+    "nome_completo": "International Conference on Machine Learning",
+    "nome_gsm": "International Conference on Machine Learning",
+    "h5_index": 272,
+    "h5_median": 471,
+    "estrato_capes": "A1",
+    "url_fonte": "https://scholar.google.com/citations?hl=en&view_op=list_hcore&venue=wL2oxc9mT4YJ.2025",
+    "erro": null,
+    "data_coleta": "2026-01-28T10:38:21.514119"
+  },
+  {
+    "sigla": "ICLR",
+    "nome_completo": "International Conference on Learning Representations",
+    "nome_gsm": "International Conference on Learning Representations",
+    "h5_index": 362,
+    "h5_median": 652,
+    "estrato_capes": "A1",
+    "url_fonte": "https://scholar.google.com/citations?hl=en&view_op=list_hcore&venue=0032SoU2xY4J.2025",
+    "erro": null,
+    "data_coleta": "2026-01-28T10:38:29.134201"
+  },
+  {
+    "sigla": "IJCNN",
+    "nome_completo": "International Joint Conference on Neural Networks",
+    "nome_gsm": "International Joint Conference on Neural Networks",
+    "h5_index": 66,
+    "h5_median": 96,
+    "estrato_capes": "A1",
+    "url_fonte": "https://scholar.google.com/citations?hl=en&view_op=list_hcore&venue=-t1SY74YlYcJ.2025",
+    "erro": null,
+    "data_coleta": "2026-01-28T10:38:34.788083"
+  },
+  {
+    "sigla": "SEG",
+    "nome_completo": "SEG Technical Program Expanded Abstracts",
+    "nome_gsm": "SEG Technical Program Expanded Abstracts",
+    "h5_index": 26,
+    "h5_median": 32,
+    "estrato_capes": "A2",
+    "url_fonte": "https://scholar.google.com/citations?hl=en&view_op=list_hcore&venue=iuQ2JVp9qWkJ.2025",
+    "erro": null,
+    "data_coleta": "2026-01-28T10:38:42.894040"
+  }
+]

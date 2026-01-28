@@ -21,11 +21,9 @@ Configuração:
 """
 
 import argparse
-import csv
 import json
 import os
 from dataclasses import asdict
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
@@ -96,23 +94,18 @@ def carregar_revistas(filepath: Path) -> List[Dict]:
             sigla = partes[0].strip()
             nome = partes[1].strip() if len(partes) > 1 else sigla
             issn = partes[2].strip() if len(partes) > 2 else None
+            qualis_2020 = partes[3].strip() if len(partes) > 3 else None
 
-            revistas.append({"sigla": sigla, "nome_completo": nome, "issn": issn})
+            revistas.append(
+                {
+                    "sigla": sigla,
+                    "nome_completo": nome,
+                    "issn": issn,
+                    "qualis_2020": qualis_2020,
+                }
+            )
 
     return revistas
-
-
-def salvar_csv(resultados: List, filepath: Path, colunas: List[str]):
-    """Salva resultados em CSV."""
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(filepath, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=colunas)
-        writer.writeheader()
-        for r in resultados:
-            writer.writerow(asdict(r))
-
-    print(f"✅ Salvo: {filepath}")
 
 
 def salvar_json(resultados: List, filepath: Path):
@@ -229,7 +222,6 @@ def main():
     print(" Procedimento 2 - Computação 2025-2028")
     print("=" * 75)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     coletar_tudo = not args.conferencias and not args.revistas
 
     # -------------------------------------------------------------------------
@@ -293,23 +285,8 @@ def main():
                 else:
                     print(f"    ✓ H5={resultado.h5_index} → {resultado.estrato_capes}")
 
-            # Salva resultados
-            salvar_csv(
-                resultados_conf,
-                args.output / f"conferencias_{timestamp}.csv",
-                [
-                    "sigla",
-                    "nome_completo",
-                    "nome_gsm",
-                    "h5_index",
-                    "h5_median",
-                    "estrato_capes",
-                    "url_fonte",
-                    "erro",
-                    "data_coleta",
-                ],
-            )
-            salvar_json(resultados_conf, args.output / f"conferencias_{timestamp}.json")
+            # Salva resultados (apenas JSON)
+            salvar_json(resultados_conf, args.output / "conferencias.json")
 
             imprimir_tabela_conferencias(resultados_conf)
 
@@ -333,6 +310,9 @@ def main():
                 resultado = scraper.buscar_revista(
                     rev["sigla"], rev["nome_completo"], rev.get("issn")
                 )
+
+                # Copia qualis_2020 do input
+                resultado.qualis_2020 = rev.get("qualis_2020")
 
                 if resultado.erro:
                     print(f"    ⚠️  GSM: {resultado.erro}")
@@ -400,70 +380,15 @@ def main():
 
                 resultados_rev.append(resultado)
 
-            # Salva resultados com H5-index e JIF (se disponível)
-            salvar_csv(
-                resultados_rev,
-                args.output / f"revistas_{timestamp}.csv",
-                [
-                    "sigla",
-                    "nome_completo",
-                    "issn",
-                    "nome_gsm",
-                    "h5_index",
-                    "h5_median",
-                    "estrato_h5",
-                    "citescore",
-                    "percentil",
-                    "area_tematica",
-                    "estrato_percentil",
-                    "jif",
-                    "jif_percentil",
-                    "categoria_wos",
-                    "estrato_jif",
-                    "estrato_final",
-                    "url_gsm",
-                    "url_scopus",
-                    "url_wos",
-                    "erro",
-                    "data_coleta",
-                ],
-            )
-            salvar_json(resultados_rev, args.output / f"revistas_{timestamp}.json")
+            # Salva resultados (apenas JSON)
+            salvar_json(resultados_rev, args.output / "revistas.json")
 
             imprimir_tabela_revistas(resultados_rev)
 
-            # Mostra instruções de coleta manual do Scopus apenas se --scopus não foi usado
+            # Mostra dica sobre coleta automática do Scopus se não foi usado
             if not scopus_client:
-                print("\n" + "=" * 75)
-                print(" SCOPUS - Coleta Manual Necessária")
-                print("=" * 75)
-                print("""
-⚠️  O Scopus Preview requer JavaScript e não permite scraping direto.
-
-Para obter CiteScore e Percentil das revistas:
-
-1. Acesse: https://www.scopus.com/sources
-2. Busque cada revista pelo nome ou ISSN
-3. Anote: CiteScore, Percentile, Subject Area
-4. Preencha as colunas no arquivo CSV gerado acima
-
-💡 DICA: Use --scopus para coleta automática via API (requer SCOPUS_API_KEY em .env)
-
-Revistas para consultar:
-""")
-                for r in revistas:
-                    issn_info = f" (ISSN: {r['issn']})" if r.get("issn") else ""
-                    print(f"   • {r['nome_completo']}{issn_info}")
-
-                print(
-                    f"\n📝 Arquivo para preencher: {args.output / f'revistas_{timestamp}.csv'}"
-                )
-                print(
-                    "   Preencha as colunas 'citescore', 'percentil' e 'area_tematica' com dados do Scopus."
-                )
-                print(
-                    "   A coluna 'estrato_percentil' será calculada automaticamente após preencher."
-                )
+                print("\n💡 DICA: Use --scopus para coletar CiteScore automaticamente")
+                print("   (requer SCOPUS_API_KEY em .env)")
 
     # -------------------------------------------------------------------------
     # RESUMO

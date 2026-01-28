@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metricas CAPES - Revistas e Conferencias</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="container">
+        <div class="header-content">
+            <div>
+                <h1>Metricas CAPES</h1>
+                <p>Classificacao de revistas e conferencias cientificas</p>
+            </div>
+            <button id="theme-toggle" class="theme-toggle" aria-label="Alternar tema">
+                <span class="icon-sun">&#9728;</span>
+                <span class="icon-moon">&#9790;</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Abas -->
+        <nav class="tabs">
+            <button class="tab active" data-tab="revistas">Revistas</button>
+            <button class="tab" data-tab="conferencias">Conferencias</button>
+        </nav>
+
+        <!-- Filtros -->
+        <div class="filters">
+            <input type="search" id="busca" placeholder="Buscar por nome, sigla ou ISSN (use virgula para multiplos)...">
+            <select id="filtro-estrato">
+                <option value="">Todos os estratos</option>
+                <option value="A1">A1</option>
+                <option value="A2">A2</option>
+                <option value="A3">A3</option>
+                <option value="A4">A4</option>
+                <option value="A5">A5</option>
+                <option value="A6">A6</option>
+                <option value="A7">A7</option>
+                <option value="A8">A8</option>
+            </select>
+            <span id="contador"></span>
+        </div>
+
+        <!-- Tabela de Revistas -->
+        <section id="revistas-section" class="tab-content active">
+            <details class="info-box">
+                <summary>Como funciona a classificacao de periodicos?</summary>
+                <div class="info-content">
+                    <p><strong>Fluxo:</strong> ISSN → Buscar Percentis → MAX(Scopus, WoS) → Estrato</p>
+                    <div class="info-grid">
+                        <table class="compact-table">
+                            <thead>
+                                <tr><th>Estrato</th><th>Percentil</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td><span class="estrato estrato-A1">A1</span></td><td>>= 87,5%</td></tr>
+                                <tr><td><span class="estrato estrato-A2">A2</span></td><td>>= 75,0%</td></tr>
+                                <tr><td><span class="estrato estrato-A3">A3</span></td><td>>= 62,5%</td></tr>
+                                <tr><td><span class="estrato estrato-A4">A4</span></td><td>>= 50,0%</td></tr>
+                                <tr><td><span class="estrato estrato-A5">A5</span></td><td>>= 37,5%</td></tr>
+                                <tr><td><span class="estrato estrato-A6">A6</span></td><td>>= 25,0%</td></tr>
+                                <tr><td><span class="estrato estrato-A7">A7</span></td><td>>= 12,5%</td></tr>
+                                <tr><td><span class="estrato estrato-A8">A8</span></td><td>< 12,5%</td></tr>
+                            </tbody>
+                        </table>
+                        <div class="info-notes">
+                            <p><strong>Calculo:</strong> <code>percentil = MAX(scopus, wos)</code></p>
+                            <p><strong>Ajuste SBC:</strong> Periodicos editados pela SBC podem subir ate 2 niveis</p>
+                            <p><strong>Bloqueio COPE:</strong> Editoras na lista COPE (predatorias) sao bloqueadas</p>
+                        </div>
+                    </div>
+                </div>
+            </details>
+            <table id="tabela-revistas">
+                <thead>
+                    <tr>
+                        <th data-sort="nome_completo" class="sortable">Nome (Sigla)</th>
+                        <th data-sort="h5_index" class="sortable">H5-Index</th>
+                        <th data-sort="citescore" class="sortable">CiteScore</th>
+                        <th data-sort="percentil" class="sortable">Percentil</th>
+                        <th data-sort="estrato_final" class="sortable">Estrato</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <!-- Tabela de Conferencias -->
+        <section id="conferencias-section" class="tab-content">
+            <details class="info-box">
+                <summary>Como funciona a classificacao de eventos?</summary>
+                <div class="info-content">
+                    <p><strong>Fluxo em 2 Etapas:</strong> H5-index → Ajuste CE-SBC → Saturacao → Estrato Final</p>
+                    <div class="info-grid">
+                        <div>
+                            <h4>Etapa 1: H5-index</h4>
+                            <table class="compact-table">
+                                <thead>
+                                    <tr><th>Estrato</th><th>H5 Minimo</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td><span class="estrato estrato-A1">A1</span></td><td>>= 35</td></tr>
+                                    <tr><td><span class="estrato estrato-A2">A2</span></td><td>>= 25</td></tr>
+                                    <tr><td><span class="estrato estrato-A3">A3</span></td><td>>= 20</td></tr>
+                                    <tr><td><span class="estrato estrato-A4">A4</span></td><td>>= 15</td></tr>
+                                    <tr><td><span class="estrato estrato-A5">A5</span></td><td>>= 12</td></tr>
+                                    <tr><td><span class="estrato estrato-A6">A6</span></td><td>>= 9</td></tr>
+                                    <tr><td><span class="estrato estrato-A7">A7</span></td><td>>= 6</td></tr>
+                                    <tr><td><span class="estrato estrato-A8">A8</span></td><td>> 0</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="info-notes">
+                            <h4>Etapa 2: CE-SBC</h4>
+                            <p><span class="badge badge-green">TOP 10</span> +2 niveis</p>
+                            <p><span class="badge badge-yellow">TOP 20</span> +1 nivel</p>
+                            <p><span class="badge badge-gray">Relevante</span> Mantem</p>
+                            <hr>
+                            <p><strong>Saturacao:</strong> Maximo A3 por ajuste qualitativo</p>
+                            <p><strong>Tradicao SBC:</strong></p>
+                            <ul>
+                                <li>>= 20 anos → Minimo A4</li>
+                                <li>>= 10 anos → Minimo A5</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </details>
+            <table id="tabela-conferencias">
+                <thead>
+                    <tr>
+                        <th data-sort="sigla" class="sortable">Sigla</th>
+                        <th data-sort="nome_completo" class="sortable">Nome</th>
+                        <th data-sort="h5_index" class="sortable">H5-Index</th>
+                        <th data-sort="h5_median" class="sortable">H5-Median</th>
+                        <th data-sort="estrato_capes" class="sortable">Estrato</th>
+                        <th>Links</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+    </main>
+
+    <footer class="container">
+        <p>
+            Dados coletados automaticamente do Google Scholar Metrics e Scopus.
+            <br>
+            <small id="data-atualizacao"></small>
+        </p>
+        <p>
+            <a href="https://github.com/daniel/coleta_capes" target="_blank">Codigo fonte</a>
+        </p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

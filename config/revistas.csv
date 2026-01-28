@@ -1,9 +1,15 @@
 # Lista de Revistas para Consulta de Métricas CAPES
-# Formato: sigla,nome_completo,issn
+# Formato: sigla,nome_completo,issn,qualis_2020
 # O ISSN ajuda na busca precisa (formato: XXXX-XXXX)
 # Linhas começando com # são ignoradas
 #
-SPE,SPE Journal,1086-055X
-TGRS,IEEE Transactions on Geoscience and Remote Sensing,0196-2892
-GRSL,IEEE Geoscience and Remote Sensing Letters,1545-598X
-GRSM,IEEE Geoscience and Remote Sensing Magazine,2473-2397
+SPE,SPE Journal,1086-055X,A2
+TGRS,IEEE Transactions on Geoscience and Remote Sensing,0196-2892,A1
+GRSL,IEEE Geoscience and Remote Sensing Letters,1545-598X,A2
+GRSM,IEEE Geoscience and Remote Sensing Magazine,2473-2397,A2
+SEG,Interpretation (SEG),0020-9643,B1
+C&G,Computers & Geosciences,0098-3004,A1
+GMD,Geoscientific Model Development,1991-9603,A1
+MG,Mathematical Geosciences,1874-8961,A1
+JPEPT,Journal of Petroleum Exploration and Production Technology,2190-0558,A2
+JPSE,Journal of Petroleum Science and Engineering,0920-4105,A1

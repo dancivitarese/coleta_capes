@@ -1,0 +1,623 @@
+/* Estilos customizados para Metricas CAPES */
+
+/* Base - reduzir tamanho geral */
+:root {
+    font-size: 15px;
+}
+
+/* Header */
+header {
+    text-align: left;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--pico-muted-border-color);
+    margin-bottom: 1rem;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+header h1 {
+    margin-bottom: 0.25rem;
+    font-size: 1.5rem;
+}
+
+header p {
+    color: var(--pico-muted-color);
+    margin-bottom: 0;
+    font-size: 0.9rem;
+}
+
+/* Theme toggle */
+.theme-toggle {
+    background: #1a1a2e;
+    border: none;
+    border-radius: 50%;
+    width: 2.2rem;
+    height: 2.2rem;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    transition: all 0.2s;
+    color: #f5f5f5;
+}
+
+.theme-toggle:hover {
+    opacity: 0.8;
+}
+
+:root[data-theme="dark"] .theme-toggle {
+    background: #f5f5f5;
+    color: #1a1a2e;
+}
+
+.icon-sun,
+.icon-moon {
+    line-height: 1;
+}
+
+/* Light theme: show moon, hide sun */
+:root:not([data-theme="dark"]) .icon-sun {
+    display: none;
+}
+
+:root:not([data-theme="dark"]) .icon-moon {
+    display: inline;
+}
+
+/* Dark theme: show sun, hide moon */
+:root[data-theme="dark"] .icon-sun {
+    display: inline;
+}
+
+:root[data-theme="dark"] .icon-moon {
+    display: none;
+}
+
+/* Abas */
+.tabs {
+    display: flex;
+    justify-content: flex-start;
+    gap: 0;
+    margin-bottom: 1rem;
+    border-bottom: 2px solid var(--pico-muted-border-color);
+    padding-bottom: 0;
+}
+
+.tab {
+    padding: 0.4rem 0.75rem;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    font-weight: 500;
+    font-size: 0.85rem;
+    color: var(--pico-muted-color);
+    transition: all 0.2s;
+}
+
+.tab:hover {
+    color: var(--pico-primary);
+}
+
+.tab.active {
+    color: var(--pico-primary);
+    border-bottom-color: var(--pico-primary);
+}
+
+/* Filtros */
+.filters {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.filters input[type="search"] {
+    flex: 1;
+    min-width: 180px;
+    margin-bottom: 0;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+}
+
+.filters select {
+    width: auto;
+    min-width: 120px;
+    margin-bottom: 0;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+}
+
+#contador {
+    color: var(--pico-muted-color);
+    font-size: 0.8rem;
+}
+
+/* Tab content */
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Tabela */
+table {
+    font-size: 0.8rem;
+}
+
+table th {
+    white-space: nowrap;
+    padding: 0.5rem 0.6rem;
+    font-size: 0.75rem;
+}
+
+table td {
+    vertical-align: middle;
+    padding: 0.4rem 0.6rem;
+}
+
+/* Colunas ordenaveis */
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 1.2rem;
+}
+
+th.sortable:hover {
+    background-color: var(--pico-secondary-background);
+}
+
+th.sortable::after {
+    content: '⇅';
+    position: absolute;
+    right: 0.3rem;
+    opacity: 0.3;
+    font-size: 0.7rem;
+}
+
+th.sortable.sort-asc::after {
+    content: '↑';
+    opacity: 1;
+}
+
+th.sortable.sort-desc::after {
+    content: '↓';
+    opacity: 1;
+}
+
+/* Coluna de links */
+.links {
+    display: flex;
+    gap: 0.3rem;
+}
+
+.links a {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+/* Cores por estrato */
+.estrato {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-align: center;
+    min-width: 2.2rem;
+}
+
+.estrato-A1 {
+    background-color: #22c55e;
+    color: white;
+}
+
+.estrato-A2 {
+    background-color: #3b82f6;
+    color: white;
+}
+
+.estrato-A3 {
+    background-color: #8b5cf6;
+    color: white;
+}
+
+.estrato-A4 {
+    background-color: #f59e0b;
+    color: white;
+}
+
+.estrato-A5 {
+    background-color: #f97316;
+    color: white;
+}
+
+.estrato-A6 {
+    background-color: #ef4444;
+    color: white;
+}
+
+.estrato-A7 {
+    background-color: #dc2626;
+    color: white;
+}
+
+.estrato-A8 {
+    background-color: #991b1b;
+    color: white;
+}
+
+/* Estratos B (Qualis 2017) */
+.estrato-B1 {
+    background-color: #0891b2;
+    color: white;
+}
+
+.estrato-B2 {
+    background-color: #0284c7;
+    color: white;
+}
+
+.estrato-B3 {
+    background-color: #0369a1;
+    color: white;
+}
+
+.estrato-B4 {
+    background-color: #075985;
+    color: white;
+}
+
+.estrato-B5 {
+    background-color: #0c4a6e;
+    color: white;
+}
+
+/* Estratos C (Qualis 2017) */
+.estrato-C {
+    background-color: #6b7280;
+    color: white;
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 1rem 0;
+    margin-top: 2rem;
+    border-top: 1px solid var(--pico-muted-border-color);
+    color: var(--pico-muted-color);
+    font-size: 0.8rem;
+}
+
+footer p {
+    margin-bottom: 0.25rem;
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    .filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .filters input[type="search"],
+    .filters select {
+        width: 100%;
+    }
+
+    table {
+        font-size: 0.7rem;
+    }
+
+    .links {
+        flex-direction: column;
+    }
+}
+
+/* Estado vazio */
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: var(--pico-muted-color);
+    font-size: 0.85rem;
+}
+
+/* Loading */
+.loading {
+    text-align: center;
+    padding: 2rem;
+    font-size: 0.85rem;
+}
+
+/* Linhas expansiveis */
+tr.expandable {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+tr.expandable:hover {
+    background-color: var(--pico-secondary-background);
+}
+
+tr.expandable.expanded {
+    background-color: var(--pico-secondary-background);
+}
+
+.expand-icon {
+    display: inline-block;
+    width: 1.2em;
+    font-weight: bold;
+    color: var(--pico-primary);
+    transition: transform 0.2s;
+}
+
+tr.expandable.expanded .expand-icon {
+    transform: rotate(45deg);
+}
+
+/* Linha de detalhes */
+tr.details-row {
+    display: none;
+}
+
+tr.details-row.visible {
+    display: table-row;
+}
+
+tr.details-row td {
+    padding: 0;
+    background-color: var(--pico-card-background-color);
+    border-top: none;
+}
+
+.details-content {
+    padding: 1rem;
+    animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+}
+
+.detail-group {
+    background-color: var(--pico-background-color);
+    padding: 0.75rem;
+    border-radius: 6px;
+    border: 1px solid var(--pico-muted-border-color);
+}
+
+.detail-group h4 {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.8rem;
+    color: var(--pico-primary);
+    border-bottom: 1px solid var(--pico-muted-border-color);
+    padding-bottom: 0.4rem;
+}
+
+.detail-group p {
+    margin: 0.3rem 0;
+    font-size: 0.75rem;
+}
+
+.detail-group .estrato {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+}
+
+.detail-group .error {
+    color: #ef4444;
+}
+
+.detail-group .info-note {
+    font-size: 0.75rem;
+    color: var(--pico-muted-color);
+    font-style: italic;
+    margin-top: 0.5rem;
+}
+
+.detail-group .formula {
+    margin: 0.5rem 0;
+}
+
+.detail-group .formula code {
+    background-color: var(--pico-code-background-color);
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-family: monospace;
+}
+
+.detail-group .detail-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.5rem;
+}
+
+.detail-group .detail-links a {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    text-decoration: none;
+    background-color: var(--pico-primary);
+    color: white;
+}
+
+.detail-group .detail-links a:hover {
+    background-color: var(--pico-primary-hover);
+}
+
+/* Responsivo para detalhes */
+@media (max-width: 768px) {
+    .details-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .details-content {
+        padding: 0.75rem;
+    }
+}
+
+/* Info box (collapsible) */
+.info-box {
+    margin-bottom: 1rem;
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 6px;
+    background-color: var(--pico-card-background-color);
+}
+
+.info-box summary {
+    padding: 0.6rem 0.8rem;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--pico-primary);
+    list-style: none;
+}
+
+.info-box summary::-webkit-details-marker {
+    display: none;
+}
+
+.info-box summary::before {
+    content: '+ ';
+    font-weight: bold;
+}
+
+.info-box[open] summary::before {
+    content: '- ';
+}
+
+.info-box summary:hover {
+    background-color: var(--pico-secondary-background);
+}
+
+.info-content {
+    padding: 0 0.8rem 0.8rem 0.8rem;
+    border-top: 1px solid var(--pico-muted-border-color);
+}
+
+.info-content p {
+    margin: 0.3rem 0;
+    font-size: 0.8rem;
+}
+
+.info-content code {
+    background-color: var(--pico-code-background-color);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 1rem;
+    margin-top: 0.75rem;
+}
+
+.info-grid h4 {
+    margin: 0 0 0.4rem 0;
+    font-size: 0.8rem;
+    color: var(--pico-primary);
+}
+
+.info-notes {
+    font-size: 0.75rem;
+}
+
+.info-notes p {
+    margin: 0.3rem 0;
+}
+
+.info-notes ul {
+    margin: 0.2rem 0 0 0.8rem;
+    padding: 0;
+    font-size: 0.75rem;
+}
+
+.info-notes li {
+    margin: 0.15rem 0;
+}
+
+.info-notes hr {
+    margin: 0.75rem 0;
+    border: none;
+    border-top: 1px solid var(--pico-muted-border-color);
+}
+
+/* Compact table for info boxes */
+.compact-table {
+    font-size: 0.7rem;
+    margin: 0;
+}
+
+.compact-table th,
+.compact-table td {
+    padding: 0.2rem 0.4rem;
+}
+
+.compact-table .estrato {
+    font-size: 0.6rem;
+    padding: 0.1rem 0.3rem;
+    min-width: 1.8rem;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    margin-right: 0.4rem;
+}
+
+.badge-green {
+    background-color: #22c55e;
+    color: white;
+}
+
+.badge-yellow {
+    background-color: #f59e0b;
+    color: white;
+}
+
+.badge-gray {
+    background-color: #6b7280;
+    color: white;
+}
+
+/* Responsive info-grid */
+@media (max-width: 768px) {
+    .info-grid {
+        grid-template-columns: 1fr;
+    }
+}
