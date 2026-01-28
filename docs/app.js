@@ -269,33 +269,28 @@ function renderizarRevistas(dados) {
                             </div>
                         </div>
                         <div class="detail-group">
-                            <h4>Google Scholar</h4>
+                            <h4>Google Scholar ${r.estrato_h5 ? `<span class="estrato estrato-${r.estrato_h5}">${r.estrato_h5}</span>` : ''}</h4>
                             <p><strong>H5-Index:</strong> ${r.h5_index || '-'}</p>
                             <p><strong>H5-Median:</strong> ${r.h5_median || '-'}</p>
-                            <p><strong>Estrato H5:</strong> ${r.estrato_h5 ? `<span class="estrato estrato-${r.estrato_h5}">${r.estrato_h5}</span>` : '-'}</p>
                         </div>
                         <div class="detail-group">
-                            <h4>Scopus</h4>
+                            <h4>Scopus ${r.estrato_percentil ? `<span class="estrato estrato-${r.estrato_percentil}">${r.estrato_percentil}</span>` : ''}</h4>
                             <p><strong>CiteScore:</strong> ${r.citescore ? r.citescore.toFixed(1) : '-'}</p>
                             <p><strong>Percentil:</strong> ${r.percentil ? r.percentil.toFixed(1) + '%' : '-'}</p>
                             <p><strong>Area Tematica:</strong> ${r.area_tematica || '-'}</p>
-                            <p><strong>Estrato Percentil:</strong> ${r.estrato_percentil ? `<span class="estrato estrato-${r.estrato_percentil}">${r.estrato_percentil}</span>` : '-'}</p>
                         </div>
                         <div class="detail-group">
-                            <h4>Web of Science</h4>
+                            <h4>Web of Science ${r.estrato_jif ? `<span class="estrato estrato-${r.estrato_jif}">${r.estrato_jif}</span>` : ''}</h4>
                             <p><strong>JIF:</strong> ${r.jif ? r.jif.toFixed(3) : '-'}</p>
                             <p><strong>Percentil JIF:</strong> ${r.jif_percentil ? r.jif_percentil.toFixed(1) + '%' : '-'}</p>
                             <p><strong>Categoria:</strong> ${escapeHtml(r.categoria_wos || '-')}</p>
-                            <p><strong>Estrato JIF:</strong> ${r.estrato_jif ? `<span class="estrato estrato-${r.estrato_jif}">${r.estrato_jif}</span>` : '-'}</p>
                         </div>
                         <div class="detail-group">
-                            <h4>Qualis 2020</h4>
-                            <p><strong>Estrato:</strong> ${r.qualis_2020 ? `<span class="estrato estrato-${r.qualis_2020}">${r.qualis_2020}</span>` : '-'}</p>
+                            <h4>Qualis 2020 ${r.qualis_2020 ? `<span class="estrato estrato-${r.qualis_2020}">${r.qualis_2020}</span>` : ''}</h4>
                             <p class="info-note">Classificacao do quadrienio 2017-2020</p>
                         </div>
                         <div class="detail-group">
-                            <h4>Classificacao Final</h4>
-                            <p><strong>Estrato Final:</strong> ${r.estrato_final ? `<span class="estrato estrato-${r.estrato_final}">${r.estrato_final}</span>` : '-'}</p>
+                            <h4>Classificacao Final ${r.estrato_final ? `<span class="estrato estrato-${r.estrato_final}">${r.estrato_final}</span>` : ''}</h4>
                             <p class="formula">
                                 <code>MAX(${r.estrato_h5 || '-'}, ${r.estrato_percentil || '-'}, ${r.estrato_jif || '-'}) = ${r.estrato_final || '-'}</code>
                             </p>
@@ -339,14 +334,13 @@ function renderizarConferencias(dados) {
                 <div class="details-content">
                     <div class="details-grid">
                         <div class="detail-group">
-                            <h4>Google Scholar Metrics</h4>
+                            <h4>Google Scholar Metrics ${c.estrato_capes ? `<span class="estrato estrato-${c.estrato_capes}">${c.estrato_capes}</span>` : ''}</h4>
                             <p><strong>Nome GSM:</strong> ${escapeHtml(c.nome_gsm || '-')}</p>
                             <p><strong>H5-Index:</strong> ${c.h5_index || '-'}</p>
                             <p><strong>H5-Median:</strong> ${c.h5_median || '-'}</p>
                         </div>
                         <div class="detail-group">
-                            <h4>Classificacao CAPES</h4>
-                            <p><strong>Estrato:</strong> ${c.estrato_capes ? `<span class="estrato estrato-${c.estrato_capes}">${c.estrato_capes}</span>` : '-'}</p>
+                            <h4>Classificacao CAPES ${c.estrato_capes ? `<span class="estrato estrato-${c.estrato_capes}">${c.estrato_capes}</span>` : ''}</h4>
                             <p><strong>Data de Coleta:</strong> ${formatarData(c.data_coleta)}</p>
                             ${c.erro ? `<p class="error"><strong>Erro:</strong> ${escapeHtml(c.erro)}</p>` : ''}
                         </div>

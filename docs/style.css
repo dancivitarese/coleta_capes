@@ -419,6 +419,9 @@ tr.details-row td {
     color: var(--pico-primary);
     border-bottom: 1px solid var(--pico-muted-border-color);
     padding-bottom: 0.4rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .detail-group p {
