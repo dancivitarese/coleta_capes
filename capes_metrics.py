@@ -54,7 +54,15 @@ OUTPUT_DIR = BASE_DIR / "output"
 
 
 def carregar_conferencias(filepath: Path) -> List[Dict]:
-    """Carrega lista de conferências do arquivo CSV."""
+    """Carrega lista de conferências do arquivo CSV.
+
+    Suporta dois formatos:
+    - 2 colunas (legado): sigla,nome_completo
+    - 5 colunas (atual):  sigla,nome_completo,qualis_2020,submissao,event
+
+    O nome_completo pode conter vírgulas (ex: "Analysis, Evolution and Reengineering"),
+    por isso a divisão é feita a partir da direita para isolar as últimas 3 colunas.
+    """
     conferencias = []
 
     if not filepath.exists():
@@ -67,11 +75,36 @@ def carregar_conferencias(filepath: Path) -> List[Dict]:
             if not linha or linha.startswith("#"):
                 continue
 
-            partes = linha.split(",", 1)
-            sigla = partes[0].strip()
-            nome = partes[1].strip() if len(partes) > 1 else None
+            # Split from the right to preserve commas inside nome_completo.
+            # With 5 columns there are exactly 3 trailing fixed fields after nome_completo.
+            partes = linha.rsplit(",", 3)
 
-            conferencias.append({"sigla": sigla, "nome_completo": nome})
+            if len(partes) == 4:
+                # Full format: "sigla,nome_completo", qualis_2020, submissao, event
+                sigla_nome = partes[0].split(",", 1)
+                sigla = sigla_nome[0].strip()
+                nome = sigla_nome[1].strip() if len(sigla_nome) > 1 else None
+                qualis_2020 = partes[1].strip() or None
+                submissao = partes[2].strip() or None
+                event = partes[3].strip() or None
+            else:
+                # Fallback: sigla,nome_completo (legacy 2-column format)
+                sigla_nome = linha.split(",", 1)
+                sigla = sigla_nome[0].strip()
+                nome = sigla_nome[1].strip() if len(sigla_nome) > 1 else None
+                qualis_2020 = None
+                submissao = None
+                event = None
+
+            conferencias.append(
+                {
+                    "sigla": sigla,
+                    "nome_completo": nome,
+                    "qualis_2020": qualis_2020,
+                    "submissao": submissao,
+                    "event": event,
+                }
+            )
 
     return conferencias
 
@@ -278,6 +311,9 @@ def main():
                 resultado = scraper.buscar_conferencia(
                     conf["sigla"], conf.get("nome_completo")
                 )
+                resultado.qualis_2020 = conf.get("qualis_2020")
+                resultado.submissao = conf.get("submissao")
+                resultado.event = conf.get("event")
                 resultados_conf.append(resultado)
 
                 if resultado.erro:

@@ -36,6 +36,9 @@ HEADERS = {
 class ConferenciaMetrics:
     sigla: str
     nome_completo: Optional[str] = None
+    qualis_2020: Optional[str] = None
+    submissao: Optional[str] = None
+    event: Optional[str] = None
     nome_gsm: Optional[str] = None
     h5_index: Optional[int] = None
     h5_median: Optional[int] = None

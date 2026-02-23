@@ -340,6 +340,15 @@ function renderizarConferencias(dados) {
                             <p><strong>H5-Median:</strong> ${c.h5_median || '-'}</p>
                         </div>
                         <div class="detail-group">
+                            <h4>Qualis 2020 ${c.qualis_2020 ? `<span class="estrato estrato-${c.qualis_2020}">${c.qualis_2020}</span>` : ''}</h4>
+                            <p class="info-note">Classificacao do quadrienio 2017-2020</p>
+                        </div>
+                        <div class="detail-group">
+                            <h4>Datas</h4>
+                            <p><strong>Submissao:</strong> ${escapeHtml(c.submissao || '-')}</p>
+                            <p><strong>Evento:</strong> ${escapeHtml(c.event || '-')}</p>
+                        </div>
+                        <div class="detail-group">
                             <h4>Classificacao CAPES ${c.estrato_capes ? `<span class="estrato estrato-${c.estrato_capes}">${c.estrato_capes}</span>` : ''}</h4>
                             <p><strong>Data de Coleta:</strong> ${formatarData(c.data_coleta)}</p>
                             ${c.erro ? `<p class="error"><strong>Erro:</strong> ${escapeHtml(c.erro)}</p>` : ''}

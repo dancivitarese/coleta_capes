@@ -1,11 +1,35 @@
 # Lista de Conferências para Consulta de Métricas CAPES
-# Formato: sigla,nome_completo
+# Formato: sigla,nome_completo,qualis_2020,submissao,event
 # A sigla é usada para buscar no Google Scholar Metrics
 # Linhas começando com # são ignoradas
 #
-NeurIPS,Neural Information Processing Systems
-AAAI,AAAI Conference on Artificial Intelligence
-ICML,International Conference on Machine Learning
-ICLR,International Conference on Learning Representations
-IJCNN,International Joint Conference on Neural Networks
-SEG, SEG Technical Program Expanded Abstracts
+DIS,Conference on Designing Interactive Systems,A1,Janeiro,Julho
+ICCAD,IEEE/ACM International Conference on Computer-Aided Design,A1,Abril,Outubro
+ISDA,International Conference on Intelligent Systems Design and Applications,B1,Setembro,Dezembro
+RECSYS,ACM Conference on Recommender Systems,A1,Abril,Setembro/Outubro
+SOSP,ACM Symposium on Operating Systems Principles,A1,Abril,Outubro/Novembro
+ITSC,IEEE International Conference on Intelligent Transportation Systems,A1,Maio,Setembro/Novembro
+CASCON,Annual International Conference on Computer Science and Software Engineering,B1,Agosto,Maio
+ICDE,IEEE International Conference on Data Engineering,A1,Agosto/Novembro,Maio
+SANER,IEEE International Conference on Software Analysis, Evolution and Reengineering,A1,Outubro,Março
+ASE,IEEE/ACM International Conference on Automated Software Engineering,A1,Maio,Setembro/Novembro
+IEAAIE,International Conference on Industrial Engineering & Other Applications of Appled Intelligence Systems,B1,Janeiro,Abril
+CGI,Computer Graphics International Conference,B1,Maio,Maio
+STIL,Brazilian Symposium in Information and Human Language Technology,B1,Junho,Agosto
+NLDB,International Conference on Application of Natural Language to Information Systems,B1,Janeiro,Julho
+ICMLC,International Conference on Machine Learning and Computing,B1,Dezembro,Fevereiro
+LION,Learning and Intelligent Optimization Conference,B1,Março,Junho
+ML4H,Machine Learning for Health,B1,Agosto,Dezembro
+AIPR,Applied Imagery Pattern Recognition Workshop,B1,Agosto,Outubro
+ICIP,IEEE International Conference on Image Processing,A1,Fevereiro,Setembro/Outubro
+GEOINFO,Brazilian Symposium on GeoInformatics,B1,Janeiro,Maio
+3DV,International Conference on 3D Vision,A1,Agosto,Março
+CDVE,International Conference on Cooperative Design, Visualization, and Engineering,B2,Fevereiro,Setembro
+ICVS,International Conference on Computer Vision Systems,B2,Julho,Setembro
+VISIGRAPP,Conference on Computer Vision, Imaging and Computer Graphics Theory and Applications,B2,Outubro,Março
+NeurIPS,Neural Information Processing Systems,A1,Maio,Dezembro
+AAAI,AAAI Conference on Artificial Intelligence,A1,Agosto,Janeiro
+ICML,International Conference on Machine Learning,A1,Janeiro,Julho
+ICLR,International Conference on Learning Representations,A1,Setembro,Abril
+IJCNN,International Joint Conference on Neural Networks,A1,Janeiro,Junho
+SEG,SEG Technical Program Expanded Abstracts,B1,Abril,Agosto
